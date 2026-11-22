@@ -183,7 +183,7 @@ main{padding:var(--space-5) var(--space-4) 104px}
 .bottom svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .week{grid-template-columns:1fr}.day{min-height:0}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important}.btn:hover,a.card:hover,.tile:hover{transform:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}.btn:hover,a.card:hover,.tile:hover,.exam-card:hover{transform:none}}
 
 .ds-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .ds-hint{font-size:13px;color:var(--muted)}
@@ -223,3 +223,16 @@ body.is-auth .app,body.is-auth .bottom{display:none}
 body.is-auth .auth{display:grid;min-height:100vh;place-items:center;padding:var(--space-4)}
 .auth-card{width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-2xl);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4);box-shadow:var(--shadow-float)}
 .auth-card h1{margin:0}
+
+.tile-ph{display:grid;place-items:center;width:100%;aspect-ratio:4/3;background:color-mix(in srgb,var(--tone) 38%,var(--surface));color:var(--tone-ink)}
+.tile-ph svg{width:38%;height:auto;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.tile-done .tile-ph,.tile-done .tile-img{opacity:.55}
+.stats{display:grid;gap:var(--space-3);grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.stat{display:flex;flex-direction:column;gap:2px;padding:var(--space-4);border-radius:var(--radius-xl);background:var(--surface);border:1px solid var(--line)}
+.stat.main{background:var(--mint-soft);border-color:var(--mint)}
+.stat-k{font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.stat-v{font-family:var(--font-display);font-weight:500;font-size:30px;letter-spacing:-.04em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat-s{font-size:13px;color:var(--muted)}
+
+.exam-card{text-align:left;font:inherit;color:var(--text);cursor:pointer;gap:var(--space-4);transition:transform .6s cubic-bezier(.2,.7,.2,1),box-shadow .6s cubic-bezier(.2,.7,.2,1),border-color .6s}
+.exam-card:hover{transform:translateY(-4px);border-color:var(--mint);box-shadow:var(--shadow-glow)}

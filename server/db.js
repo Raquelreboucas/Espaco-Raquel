@@ -38,8 +38,32 @@ export async function openDb({ url, authToken } = {}) {
   if (url.startsWith('file:') && !url.includes(':memory:')) mkdirSync(dirname(url.slice(5)), { recursive: true });
   const client = createClient({ url, authToken });
   await client.executeMultiple('PRAGMA foreign_keys = ON;');
+  await migrateOldStudy(client);
   await client.executeMultiple(readFileSync(join(here, 'schema.sql'), 'utf8'));
   return makeStore(client);
+}
+
+/** Bancos criados antes dos três concursos: move matérias e registros para o concurso TJSP. */
+async function migrateOldStudy(client) {
+  const cols = (await client.execute("SELECT name FROM pragma_table_info('study_subjects')")).rows.map((r) => r.name);
+  if (!cols.length || cols.includes('exam_id')) return; // banco novo ou já migrado
+  await client.executeMultiple(`
+    DROP INDEX IF EXISTS idx_study_log_date;
+    ALTER TABLE study_topics RENAME TO old_study_topics;
+    ALTER TABLE study_subjects RENAME TO old_study_subjects;
+    ALTER TABLE study_log RENAME TO old_study_log;
+    ALTER TABLE study_settings RENAME TO old_study_settings;`);
+  await client.executeMultiple(readFileSync(join(here, 'schema.sql'), 'utf8'));
+  await client.batch([
+    `INSERT INTO study_exams(user_id, id, name, exam_date, weekly_hours, position)
+       SELECT user_id, 'tjsp', 'TJSP', exam_date, weekly_hours, 0 FROM old_study_settings`,
+    `INSERT INTO study_exams(user_id, id, name, position) SELECT user_id, 'receita', 'Receita Federal', 1 FROM old_study_settings`,
+    `INSERT INTO study_exams(user_id, id, name, position) SELECT user_id, 'inss', 'INSS', 2 FROM old_study_settings`,
+    `INSERT INTO study_subjects(user_id, id, exam_id, name, position) SELECT user_id, id, 'tjsp', name, position FROM old_study_subjects`,
+    `INSERT INTO study_topics(user_id, id, subject_id, text, done, position) SELECT user_id, id, subject_id, text, done, position FROM old_study_topics`,
+    `INSERT INTO study_log(user_id, id, exam_id, date, subject, minutes, position) SELECT user_id, id, 'tjsp', date, subject, minutes, position FROM old_study_log`,
+    'DROP TABLE old_study_topics', 'DROP TABLE old_study_subjects', 'DROP TABLE old_study_log', 'DROP TABLE old_study_settings',
+  ], 'write');
 }
 
 function makeStore(client) {
@@ -89,20 +113,21 @@ function makeStore(client) {
       };
     },
     async study(u) {
-      const [s, subjects, topics, log] = await Promise.all([
-        one('SELECT * FROM study_settings WHERE user_id = ?', [u]),
+      const [exams, subjects, topics, log] = await Promise.all([
+        rows('SELECT * FROM study_exams WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM study_subjects WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM study_topics WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM study_log WHERE user_id = ? ORDER BY position', [u]),
       ]);
       return {
-        exam: { name: s?.exam_name ?? '', date: s?.exam_date ?? '' },
-        weeklyHours: s?.weekly_hours ?? 10,
-        subjects: subjects.map((x) => ({
-          id: x.id, name: x.name,
-          topics: topics.filter((t) => t.subject_id === x.id).map((t) => ({ id: t.id, t: t.text, d: !!t.done })),
+        exams: exams.map((e) => ({
+          id: e.id, name: e.name, date: e.exam_date, weeklyHours: e.weekly_hours,
+          subjects: subjects.filter((x) => x.exam_id === e.id).map((x) => ({
+            id: x.id, name: x.name,
+            topics: topics.filter((t) => t.subject_id === x.id).map((t) => ({ id: t.id, t: t.text, d: !!t.done })),
+          })),
+          log: log.filter((l) => l.exam_id === e.id).map((l) => ({ id: l.id, date: l.date, subject: l.subject, min: l.minutes })),
         })),
-        log: log.map((l) => ({ id: l.id, date: l.date, subject: l.subject, min: l.minutes })),
       };
     },
   };
@@ -173,27 +198,30 @@ function makeStore(client) {
       return out;
     },
     study(u, d) {
-      const subjects = arr(d?.subjects, 'subjects'), log = arr(d?.log, 'log');
-      const exam = d.exam && typeof d.exam === 'object' ? d.exam : {};
+      const exams = arr(d?.exams, 'exams');
       const out = [
         st('DELETE FROM study_topics WHERE user_id = ?', [u]),
         st('DELETE FROM study_subjects WHERE user_id = ?', [u]),
         st('DELETE FROM study_log WHERE user_id = ?', [u]),
-        st('INSERT OR REPLACE INTO study_settings(user_id, exam_name, exam_date, weekly_hours) VALUES (?,?,?,?)',
-          [u, str(exam.name, 80), ISO_DAY.test(exam.date) ? exam.date : '', Math.min(100, num(d.weeklyHours) ?? 10)]),
+        st('DELETE FROM study_exams WHERE user_id = ?', [u]),
       ];
-      subjects.forEach((s, i) => {
-        const sid = id(s.id, 'subjects');
-        out.push(st('INSERT INTO study_subjects(user_id, id, name, position) VALUES (?,?,?,?)', [u, sid, str(s.name, 60) || 'Sem nome', i]));
-        arr(s.topics ?? [], 'topics').forEach((t, j) =>
-          out.push(st('INSERT INTO study_topics(user_id, id, subject_id, text, done, position) VALUES (?,?,?,?,?,?)',
-            [u, id(t.id, 'topics'), sid, str(t.t, 140), bool(t.d), j])));
-      });
-      log.forEach((l, i) => {
-        const min = Math.round(Number(l.min));
-        if (!(min > 0 && min <= 1440) || !ISO_DAY.test(l.date)) throw new ValidationError('Registro de estudo inválido.');
-        out.push(st('INSERT INTO study_log(user_id, id, date, subject, minutes, position) VALUES (?,?,?,?,?,?)',
-          [u, id(l.id, 'log'), l.date, str(l.subject, 60), min, i]));
+      exams.forEach((e, i) => {
+        const eid = id(e.id, 'exams');
+        out.push(st('INSERT INTO study_exams(user_id, id, name, exam_date, weekly_hours, position) VALUES (?,?,?,?,?,?)',
+          [u, eid, str(e.name, 80) || 'Sem nome', ISO_DAY.test(e.date) ? e.date : '', Math.min(100, num(e.weeklyHours) ?? 10), i]));
+        arr(e.subjects ?? [], 'subjects').forEach((x, j) => {
+          const sid = id(x.id, 'subjects');
+          out.push(st('INSERT INTO study_subjects(user_id, id, exam_id, name, position) VALUES (?,?,?,?,?)', [u, sid, eid, str(x.name, 60) || 'Sem nome', j]));
+          arr(x.topics ?? [], 'topics').forEach((t, k) =>
+            out.push(st('INSERT INTO study_topics(user_id, id, subject_id, text, done, position) VALUES (?,?,?,?,?,?)',
+              [u, id(t.id, 'topics'), sid, str(t.t, 140), bool(t.d), k])));
+        });
+        arr(e.log ?? [], 'log').forEach((l, j) => {
+          const min = Math.round(Number(l.min));
+          if (!(min > 0 && min <= 1440) || !ISO_DAY.test(l.date)) throw new ValidationError('Registro de estudo inválido.');
+          out.push(st('INSERT INTO study_log(user_id, id, exam_id, date, subject, minutes, position) VALUES (?,?,?,?,?,?,?)',
+            [u, id(l.id, 'log'), eid, l.date, str(l.subject, 60), min, j]));
+        });
       });
       return out;
     },

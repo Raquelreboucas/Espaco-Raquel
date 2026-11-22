@@ -117,20 +117,25 @@ CREATE TABLE IF NOT EXISTS planner_focus (       -- "foco da semana", chave = se
   PRIMARY KEY (user_id, week_start)
 );
 
--- ---------- Concurso ----------
-CREATE TABLE IF NOT EXISTS study_settings (
-  user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  exam_name    TEXT NOT NULL DEFAULT '',
+-- ---------- Concursos (TJSP, Receita Federal, INSS...) ----------
+CREATE TABLE IF NOT EXISTS study_exams (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id           TEXT NOT NULL,
+  name         TEXT NOT NULL,
   exam_date    TEXT NOT NULL DEFAULT '',
-  weekly_hours REAL NOT NULL DEFAULT 10 CHECK (weekly_hours >= 0)
+  weekly_hours REAL NOT NULL DEFAULT 10 CHECK (weekly_hours >= 0),
+  position     INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS study_subjects (
   user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   id       TEXT NOT NULL,
+  exam_id  TEXT NOT NULL,
   name     TEXT NOT NULL,
   position INTEGER NOT NULL,
-  PRIMARY KEY (user_id, id)
+  PRIMARY KEY (user_id, id),
+  FOREIGN KEY (user_id, exam_id) REFERENCES study_exams(user_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS study_topics (
@@ -147,10 +152,12 @@ CREATE TABLE IF NOT EXISTS study_topics (
 CREATE TABLE IF NOT EXISTS study_log (
   user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   id       TEXT NOT NULL,
+  exam_id  TEXT NOT NULL,
   date     TEXT NOT NULL,
   subject  TEXT NOT NULL DEFAULT '',             -- nome da matéria ('' = Geral)
   minutes  INTEGER NOT NULL CHECK (minutes > 0 AND minutes <= 1440),
   position INTEGER NOT NULL,
-  PRIMARY KEY (user_id, id)
+  PRIMARY KEY (user_id, id),
+  FOREIGN KEY (user_id, exam_id) REFERENCES study_exams(user_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_study_log_date ON study_log(user_id, date);

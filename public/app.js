@@ -17,6 +17,7 @@ const brl=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const todayIso=()=>iso(new Date());
 const pct=(a,b)=>b?Math.round(a/b*100):0;
 
+const EXAMS=[['tjsp','TJSP'],['receita','Receita Federal'],['inss','INSS']];
 const ICONS={
  inicio:'<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
  wishlists:'<svg viewBox="0 0 24 24"><path d="M20.8 5.6a5 5 0 00-7.1 0L12 7.3l-1.7-1.7a5 5 0 10-7.1 7.1L12 21.5l8.8-8.8a5 5 0 000-7.1z"/></svg>',
@@ -46,7 +47,7 @@ function defaults(){
     {id:'g1',area:'a6',title:'Fazer o curso de Logística e Supply Chain',due:'',done:false,steps:[]},
     {id:'g2',area:'a6',title:'Fazer um curso de E-commerce',due:'',done:false,steps:[]}]},
   planner:{tasks:[],focus:{}},
-  study:{exam:{name:'',date:''},weeklyHours:10,subjects:[],log:[]}
+  study:{exams:EXAMS.map(([id,name])=>({id,name,date:'',weeklyHours:10,subjects:[],log:[]}))}
  };
 }
 let S=defaults();
@@ -79,7 +80,7 @@ const VALID={
  wishlist:d=>isArr(d.cats)&&isArr(d.items),
  goals:d=>isArr(d.areas)&&isArr(d.items),
  planner:d=>isArr(d.tasks)&&d.focus&&typeof d.focus==='object',
- study:d=>isArr(d.subjects)&&isArr(d.log)&&d.exam&&typeof d.exam==='object'};
+ study:d=>isArr(d.exams)||(isArr(d.subjects)&&isArr(d.log)&&d.exam&&typeof d.exam==='object')};
 async function init(){
  setMode('carregando');
  try{ME=(await api('/api/auth/me')).user}
@@ -238,8 +239,8 @@ function viewInicio(){
  const tk=S.planner.tasks.filter(t=>t.date===todayIso());
  const gAll=S.goals.items,gDone=gAll.filter(g=>goalPct(g)===100).length;
  const wl=S.wishlist.items.filter(i=>!i.done),wlSum=wl.reduce((a,i)=>a+(i.price||0),0);
- const topics=S.study.subjects.flatMap(s=>s.topics),tDone=topics.filter(t=>t.d).length;
- const ex=S.study.exam,left=ex.date?Math.ceil((parse(ex.date)-parse(todayIso()))/864e5):null;
+ const exs=S.study.exams,topics=exs.flatMap(e=>e.subjects.flatMap(s=>s.topics)),tDone=topics.filter(t=>t.d).length;
+ const next=exs.filter(e=>e.date&&daysLeft(e)>=0).sort((a,b)=>daysLeft(a)-daysLeft(b))[0],left=next?daysLeft(next):null;
  const wk=weekMinutes();
  const card=(href,title,body)=>h('a',{class:'card',href:'#'+href},h('div',{class:'row',style:'justify-content:space-between'},h('h2',null,title),h('span',{class:'icon-btn',html:ICONS.chev,'aria-hidden':'true'})),body);
  return h('div',{class:'page'},
@@ -249,7 +250,7 @@ function viewInicio(){
    card('planner','Hoje',h('div',null,h('div',{class:'big'},tk.filter(t=>!t.done).length),h('p',{class:'muted',style:'margin:6px 0 0'},tk.length?'Feitas: '+tk.filter(t=>t.done).length+' de '+tk.length:'Nenhuma tarefa para hoje'))),
    card('objetivos','Objetivos',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},gDone+'/'+gAll.length),h('p',{class:'muted',style:'margin:0'},'objetivos concluídos'),prog(gDone,gAll.length))),
    card('wishlists','Wishlists',h('div',null,h('div',{class:'big'},wl.length),h('p',{class:'muted',style:'margin:6px 0 0'},wl.length?'desejos · '+brl.format(wlSum)+' estimados':'Nenhum desejo ainda'))),
-   card('concurso','Concurso',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},left==null?'—':left<0?'Feito':left),h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data da prova':left<0?'prova já passou':left===1?'dia para a prova':'dias para a prova'),prog(tDone,topics.length),h('p',{class:'muted',style:'margin:0'},Math.round(wk/60*10)/10+' h de estudo nesta semana'))))
+   card('concurso','Concurso',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},left==null?'—':left),h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data de uma prova':next.name+': '+(left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova')),prog(tDone,topics.length),h('p',{class:'muted',style:'margin:0'},Math.round(wk/60*10)/10+' h de estudo nesta semana'))))
   ,
   h('div',{class:'row muted',style:'justify-content:space-between'},h('span',null,ME?ME.email:''),h('span',{class:'row'},h('a',{href:'/api/export',download:'meu-espaco-backup.json'},'Baixar backup'),h('button',{type:'button',class:'linkbtn',onclick:logout},'Sair'))),
   tk.length?h('div',{class:'card'},h('h3',null,'Tarefas de hoje'),tk.map(t=>h('div',{class:'li'+(t.done?' done':'')},checkbox(t.done,'Concluir '+t.text,e=>{t.done=e.target.checked;save('planner');rerender()}),h('span',{class:'t'},t.text)))):null);
@@ -280,7 +281,14 @@ function migrateCats(W){
  W.cats=W.cats.filter(c=>!(['livros','viagens'].includes(c.name.trim().toLowerCase())&&!W.items.some(i=>i.cat===c.id)));
  for(const[n,t]of[['Casa','mint'],['Moda','pink'],['Beleza','peach'],['Tecnologia','neutral']])if(!W.cats.some(c=>c.name.trim().toLowerCase()===n.toLowerCase()))W.cats.push({id:uid(),name:n,tone:t});
  W.seeds.push('cats-4');save('wishlist')}
+function migrateStudy(){
+ const X=S.study;if(isArr(X.exams))return;
+ const old={name:(X.exam&&X.exam.name)||'',date:(X.exam&&X.exam.date)||'',weeklyHours:Number(X.weeklyHours)||10,subjects:isArr(X.subjects)?X.subjects:[],log:isArr(X.log)?X.log:[]};
+ const fresh=defaults().study.exams;
+ fresh[0]=Object.assign(fresh[0],{date:old.date,weeklyHours:old.weeklyHours,subjects:old.subjects,log:old.log});
+ S.study={exams:fresh};save('study')}
 function applyMigrations(){
+ migrateStudy();
  const W=S.wishlist;if(!isArr(W.cats))W.cats=defaults().wishlist.cats;if(!isArr(W.items))W.items=[];if(!isArr(W.seeds))W.seeds=[];
  migrateCats(W);
  if(W.seeds.includes(SEED_ID)||!canSeed)return false;
@@ -355,12 +363,36 @@ function wlTable(items){
    h('tfoot',null,h('tr',null,h('td',null,'Total geral'),h('td',{class:'num'},items.length),h('td',{class:'num'},num.format(total)))))),
   h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total)),h('span',{class:'badge peach'},'Falta comprar: '+brl.format(missing))));
 }
+
+/* ---------- ilustrações dos cards sem foto ---------- */
+const PH_PATHS={
+ geladeira:'<rect x="14" y="5" width="20" height="38" rx="3"/><path d="M14 20h20M18 11v5M18 26v8"/>',
+ fogao:'<rect x="8" y="8" width="32" height="34" rx="3"/><path d="M8 18h32"/><circle cx="18" cy="13" r="1.6"/><circle cx="24" cy="13" r="1.6"/><circle cx="30" cy="13" r="1.6"/><rect x="14" y="24" width="20" height="12" rx="1.5"/>',
+ microondas:'<rect x="5" y="12" width="38" height="24" rx="3"/><rect x="10" y="17" width="20" height="14" rx="1.5"/><path d="M35 18v0M35 24h3M35 29h3"/>',
+ liquidificador:'<path d="M14 6h20l-3 24H17z"/><path d="M13 6h22M18 30v6h12v-6M16 42h16"/>',
+ sanduicheira:'<path d="M6 28c0-6 8-10 18-10s18 4 18 10v4H6z"/><path d="M6 32h36v4a2 2 0 01-2 2H8a2 2 0 01-2-2zM14 24h20"/>',
+ airfryer:'<path d="M10 12a4 4 0 014-4h20a4 4 0 014 4v22a4 4 0 01-4 4H14a4 4 0 01-4-4z"/><circle cx="24" cy="23" r="7"/><path d="M18 42h12"/>',
+ cafeteira:'<path d="M12 8h22v10H12zM15 18v18h16V18M31 22h4a3 3 0 010 8h-4M12 42h24"/>',
+ purificador:'<rect x="13" y="5" width="22" height="38" rx="4"/><path d="M19 15h10M24 24c-3 4-4 6-4 8a4 4 0 008 0c0-2-1-4-4-8z"/>',
+ lavadora:'<rect x="9" y="5" width="30" height="38" rx="3"/><circle cx="24" cy="26" r="9"/><path d="M14 11h4M22 11h2M17 26c3-3 6 3 9 0"/>',
+ aspirador:'<path d="M30 6h6v22a8 8 0 01-8 8h-2"/><rect x="12" y="30" width="16" height="12" rx="3"/><circle cx="20" cy="36" r="2"/>',
+ ferro:'<path d="M5 34h38c0-10-8-18-18-18h-6c-8 0-14 6-14 18zM5 34v4h38v-4M15 24h10"/>',
+ tv:'<rect x="4" y="9" width="40" height="26" rx="3"/><path d="M16 42h16M24 35v7"/>',
+ roteador:'<rect x="7" y="28" width="34" height="12" rx="3"/><path d="M14 34h0M20 34h0M13 22a16 16 0 0122 0M17 17a10 10 0 0114 0"/>',
+ secador:'<path d="M6 14a8 8 0 018-8h14a8 8 0 010 16H14a8 8 0 01-8-8zM30 20l4 22h-8l-2-16"/>',
+ presente:'<rect x="7" y="18" width="34" height="9" rx="2"/><path d="M10 27v14h28V27M24 18v23M24 18c-4-8-12-6-9-1M24 18c4-8 12-6 9-1"/>'
+};
+const PH_RULES=[[/geladeira|refrigerador|freezer/,'geladeira'],[/fog[aã]o|cooktop|forno/,'fogao'],[/micro-?ondas/,'microondas'],[/liquidificador|mixer|batedeira|processador/,'liquidificador'],
+ [/sanduicheira|torradeira|grill/,'sanduicheira'],[/air ?fryer|fritadeira/,'airfryer'],[/cafeteira|caf[eé]/,'cafeteira'],[/purificador|filtro|bebedouro/,'purificador'],
+ [/lava|seca|lavadora|m[aá]quina de lavar/,'lavadora'],[/aspirador/,'aspirador'],[/ferro|passar/,'ferro'],[/\btv\b|televis/,'tv'],[/roteador|wi-?fi|mesh/,'roteador'],[/secador|chapinha|cabelo/,'secador']];
+function phArt(name){const n=String(name||'').toLowerCase();const r=PH_RULES.find(([re])=>re.test(n));
+ return '<svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">'+PH_PATHS[r?r[1]:'presente']+'</svg>'}
 function wlCard(i,cname){
  const c=cname(i.cat),[pl,pc]=PRIO[i.prio]||PRIO.media;
  const fl=(k,v)=>h('div',{style:'display:flex;flex-direction:column;gap:2px;min-width:0'},h('span',{class:'muted',style:'font-size:12px;font-weight:700'},k),v);
  return h('article',{class:'tile tone-'+c.tone+(i.done?' tile-done':'')},
   h('div',{class:'tile-top'},h('span',null,i.room||'Sem cômodo'),h('span',null,c.name)),
-  i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):null,
+  i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):h('div',{class:'tile-ph',html:phArt(i.name+' '+(i.brand||'')),'aria-hidden':'true'}),
   h('div',{class:'tile-body'},
    fl('Item',h('h3',{class:'tile-title',style:'margin:0'},i.name)),
    fl('Marca/modelo',h('span',{style:'overflow-wrap:anywhere'},i.brand||'—')),
@@ -382,6 +414,13 @@ function wlCards(items,cname){
     h('div',{class:'grid'},g.map(i=>wlCard(i,cname))))}),
   h('div',{class:'grid'},h('button',{class:'new',onclick:()=>itemModal()},'+ Novo desejo')),
   items.length?h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total))):null)}
+function catTotals(all,c){
+ const sum=l=>l.reduce((a,i)=>a+(i.price||0),0),bought=all.filter(i=>i.done),missing=all.filter(i=>!i.done);
+ const stat=(k,v,sub,cls)=>h('div',{class:'stat'+(cls?' '+cls:'')},h('span',{class:'stat-k'},k),h('strong',{class:'stat-v'},v),h('span',{class:'stat-s'},sub));
+ return h('section',{class:'stats','aria-label':'Totais de '+c.name},
+  stat('Total geral estimado',brl.format(sum(all)),all.length+(all.length===1?' item':' itens'),'main'),
+  stat('Falta comprar',brl.format(sum(missing)),missing.length+(missing.length===1?' item':' itens')),
+  stat('Já comprado',brl.format(sum(bought)),bought.length+(bought.length===1?' item':' itens')))}
 function viewWishlists(){
  const W=S.wishlist;if(wlFilter==='all'||!W.cats.some(c=>c.id===wlFilter))wlFilter=(W.cats[0]||{}).id||'all';
  const cname=id=>(W.cats.find(c=>c.id===id)||{name:'Sem categoria',tone:'neutral'});
@@ -397,6 +436,7 @@ function viewWishlists(){
   seededMsg?h('p',{class:'callout',role:'status'},seededMsg):null,
   h('div',{class:'hd-row'},tabs(W.cats.map(c=>({id:c.id,name:c.name,count:count(c.id)})),wlFilter,'Categorias',(id,fid)=>{wlFilter=id;rerender(fid)}),
    cur?h('button',{class:'icon-btn','aria-label':'Editar categoria '+cur.name,onclick:()=>catModal(cur),html:ICONS.edit}):null),
+  cur?catTotals(W.items.filter(i=>i.cat===cur.id),cur):null,
   h('div',{class:'row'},
    h('div',{class:'row',role:'group','aria-label':'Visualização'},
     h('button',{class:'chip','aria-pressed':String(wlView==='tabela'),onclick:()=>{wlView='tabela';rerender()}},'Tabela'),
@@ -452,7 +492,7 @@ function goalNode(g){
 /* ---------- Planner semanal ---------- */
 let weekStart=monday(new Date());
 const WD=['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
-function weekMinutes(){const s=iso(monday(new Date())),e=iso(addDays(monday(new Date()),6));return S.study.log.filter(l=>l.date>=s&&l.date<=e).reduce((a,l)=>a+l.min,0)}
+function weekMinutes(ex){const s=iso(monday(new Date())),e=iso(addDays(monday(new Date()),6));return (ex?ex.log:S.study.exams.flatMap(x=>x.log)).filter(l=>l.date>=s&&l.date<=e).reduce((a,l)=>a+l.min,0)}
 function viewPlanner(){
  const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(monday(new Date()));
  const range=fmt({day:'numeric',month:'short'}).format(weekStart)+' – '+fmt({day:'numeric',month:'short',year:'numeric'}).format(we);
@@ -482,22 +522,44 @@ function viewPlanner(){
 
 /* ---------- Concurso ---------- */
 const SUGGEST=['Língua Portuguesa','Matemática e Raciocínio Lógico','Informática','Atualidades','Direito Constitucional','Direito Administrativo','Direito Civil','Direito Processual Civil','Direito Penal','Direito Processual Penal'];
+let examSel=null;
+const daysLeft=e=>e.date?Math.ceil((parse(e.date)-parse(todayIso()))/864e5):null;
+const goTop=()=>{window.scrollTo(0,0);const m=$('#main');if(m)m.scrollTop=0};
 function viewConcurso(){
- const X=S.study,subs=X.subjects,topics=subs.flatMap(s=>s.topics),tDone=topics.filter(t=>t.d).length;
- const left=X.exam.date?Math.ceil((parse(X.exam.date)-parse(todayIso()))/864e5):null;
- const wk=weekMinutes(),goalMin=Math.round((Number(X.weeklyHours)||0)*60);
+ const e=S.study.exams.find(x=>x.id===examSel);
+ if(!e)examSel=null;
+ return e?viewExam(e):viewExamList()}
+function examCard(e){
+ const topics=e.subjects.flatMap(s=>s.topics),tDone=topics.filter(t=>t.d).length,left=daysLeft(e),wk=weekMinutes(e);
+ return h('button',{type:'button',class:'card exam-card',onclick:()=>{examSel=e.id;rerender();goTop()}},
+  h('div',{class:'row',style:'justify-content:space-between;flex-wrap:nowrap'},h('h2',null,e.name||'Sem nome'),h('span',{class:'icon-btn','aria-hidden':'true',html:ICONS.chev})),
+  h('div',{style:'display:flex;flex-direction:column;gap:10px'},
+   h('div',{class:'big'},left==null?'—':left<0?'Feito':left),
+   h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data da prova':left<0?'prova já realizada':left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova'),
+   prog(tDone,topics.length),
+   h('p',{class:'muted',style:'margin:0'},tDone+' de '+topics.length+' tópicos · '+e.subjects.length+(e.subjects.length===1?' matéria':' matérias')),
+   h('p',{class:'muted',style:'margin:0'},(Math.round(wk/6)/10)+' h de '+e.weeklyHours+' h nesta semana')))}
+function viewExamList(){
+ return h('div',{class:'page'},
+  head('Estudos para concurso',['Meus ',h('em',null,'concursos')]),
+  h('p',{class:'muted',style:'margin:0'},'Escolha um concurso para ver as matérias, os tópicos e o registro de estudo.'),
+  h('div',{class:'grid',style:'grid-template-columns:repeat(auto-fill,minmax(280px,1fr))'},S.study.exams.map(examCard)))}
+function viewExam(X){
+ const subs=X.subjects,topics=subs.flatMap(s=>s.topics),tDone=topics.filter(t=>t.d).length;
+ const left=daysLeft(X);
+ const wk=weekMinutes(X),goalMin=Math.round((Number(X.weeklyHours)||0)*60);
  const logSubj=subs;
  const addSubj=name=>{name=name.trim();if(!name||subs.some(s=>s.name.toLowerCase()===name.toLowerCase()))return;subs.push({id:uid(),name,topics:[]});save('study')};
  const subInp='nsub';
  return h('div',{class:'page'},
-  head(X.exam.name||'Estudos para concurso',['Meu ',h('em',null,'concurso')]),
+  head('Concurso',[h('em',null,X.name||'Sem nome')],[h('button',{class:'btn btn-ghost',onclick:()=>{examSel=null;rerender();goTop()}},'‹ Concursos')]),
   h('div',{class:'row'},
    h('span',{class:'badge'},left==null?'Sem data da prova':left<0?'Prova já realizada':left===0?'A prova é hoje':left+(left===1?' dia':' dias')+' para a prova'),
    h('span',{class:'badge'},tDone+' de '+topics.length+' tópicos estudados')),
   h('div',{class:'card'},h('h2',null,'Configuração'),
    h('div',{class:'form-grid'},
-    field('Nome do concurso',h('input',{class:'inp',value:X.exam.name,maxLength:80,placeholder:'Ex.: Escrevente TJSP',autocomplete:'off',onchange:e=>{X.exam.name=e.target.value.trim();save('study');rerender()}})),
-    field('Data da prova',h('input',{class:'inp',type:'date',value:X.exam.date,onchange:e=>{X.exam.date=e.target.value;save('study');rerender()}})),
+    field('Nome do concurso',h('input',{class:'inp',value:X.name,maxLength:80,placeholder:'Ex.: TJSP',autocomplete:'off',onchange:e=>{X.name=e.target.value.trim();save('study');rerender()}})),
+    field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
     field('Meta semanal (horas)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(X.weeklyHours),onchange:e=>{X.weeklyHours=Math.max(0,Number(e.target.value)||0);save('study');rerender()}}))),
    h('div',{style:'display:flex;flex-direction:column;gap:8px'},h('span',{class:'muted',style:'font-weight:700'},'Esta semana: '+(Math.round(wk/6)/10)+' h de '+X.weeklyHours+' h'),prog(wk,goalMin))),
   h('h2',{class:'bar'},'Matérias'),

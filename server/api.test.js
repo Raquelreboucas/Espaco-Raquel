@@ -108,9 +108,12 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
     },
     planner: { tasks: [{ id: 't1', date: '2026-11-22', text: 'x', done: false }], focus: { '2026-11-16': 'foco' } },
     study: {
-      exam: { name: 'TJSP', date: '2027-01-10' }, weeklyHours: 12,
-      subjects: [{ id: 'm1', name: 'Port', topics: [{ id: 'p1', t: 'crase', d: true }] }],
-      log: [{ id: 'l1', date: '2026-11-22', subject: 'Port', min: 60 }],
+      exams: [
+        { id: 'tjsp', name: 'TJSP', date: '2027-01-10', weeklyHours: 12,
+          subjects: [{ id: 'm1', name: 'Port', topics: [{ id: 'p1', t: 'crase', d: true }] }],
+          log: [{ id: 'l1', date: '2026-11-22', subject: 'Port', min: 60 }] },
+        { id: 'inss', name: 'INSS', date: '', weeklyHours: 8, subjects: [], log: [] },
+      ],
     },
   };
   for (const [s, body] of Object.entries(data)) assert.equal((await a.put('/api/state/' + s, body)).status, 204);
@@ -124,7 +127,7 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
   data.goals.items = []; // regravar substitui: remoções persistem
   await a.put('/api/state/goals', data.goals);
   assert.deepEqual((await a.get('/api/state')).json.sections.goals.items, []);
-  assert.equal((await a.get('/api/export')).json.data.study.exam.name, 'TJSP');
+  assert.equal((await a.get('/api/export')).json.data.study.exams[0].name, 'TJSP');
   stop();
 });
 
@@ -147,4 +150,36 @@ test('recusa pedidos que alteram dados vindos de outro site', async () => {
   const r = await c.call('PUT', '/api/state/planner', { tasks: [], focus: {} }, { Origin: 'https://site-malicioso.com' });
   assert.equal(r.status, 403);
   stop();
+});
+
+test('migra um banco antigo (um concurso só) para o concurso TJSP', async () => {
+  const { createClient } = await import('@libsql/client');
+  const dir = mkdtempSync(join(tmpdir(), 'espaco-old-'));
+  const url = 'file:' + join(dir, 'old.db').split(String.fromCharCode(92)).join('/');
+  const raw = createClient({ url });
+  await raw.executeMultiple(`
+    CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL DEFAULT '', password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+    INSERT INTO users(email, password_hash) VALUES ('a@b.com', 'x');
+    CREATE TABLE study_settings (user_id INTEGER PRIMARY KEY, exam_name TEXT NOT NULL DEFAULT '', exam_date TEXT NOT NULL DEFAULT '', weekly_hours REAL NOT NULL DEFAULT 10);
+    CREATE TABLE study_subjects (user_id INTEGER NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (user_id, id));
+    CREATE TABLE study_topics (user_id INTEGER NOT NULL, id TEXT NOT NULL, subject_id TEXT NOT NULL, text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL, PRIMARY KEY (user_id, id));
+    CREATE TABLE study_log (user_id INTEGER NOT NULL, id TEXT NOT NULL, date TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', minutes INTEGER NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (user_id, id));
+    CREATE INDEX idx_study_log_date ON study_log(user_id, date);
+    CREATE TABLE meta (user_id INTEGER NOT NULL, key TEXT NOT NULL, PRIMARY KEY (user_id, key));
+    INSERT INTO meta VALUES (1, 'init:study');
+    INSERT INTO study_settings VALUES (1, 'Escrevente', '2027-02-01', 15);
+    INSERT INTO study_subjects VALUES (1, 'm1', 'Português', 0);
+    INSERT INTO study_topics VALUES (1, 'p1', 'm1', 'crase', 1, 0);
+    INSERT INTO study_log VALUES (1, 'l1', '2026-11-20', 'Português', 45, 0);`);
+  raw.close();
+  const store = await openDb({ url });
+  const { study } = await store.readAll(1);
+  assert.deepEqual(study.exams.map((e) => e.name), ['TJSP', 'Receita Federal', 'INSS']);
+  assert.equal(study.exams[0].date, '2027-02-01');
+  assert.equal(study.exams[0].weeklyHours, 15);
+  assert.deepEqual(study.exams[0].subjects[0].topics, [{ id: 'p1', t: 'crase', d: true }]);
+  assert.equal(study.exams[0].log[0].min, 45);
+  assert.equal(study.exams[1].subjects.length, 0);
+  store.close();
+  try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows */ }
 });

@@ -13,7 +13,7 @@ npm start
 
 Abra http://localhost:3000 e clique em "Criar conta". Os dados ficam em `data/meu-espaco.db` (SQLite).
 
-A **primeira conta criada** recebe a lista de eletrodomésticos da categoria Casa. As outras começam vazias.
+A **primeira conta criada** recebe a lista de eletrodomésticos da categoria Casa. As outras começam vazias. A página Concurso já vem com três concursos (TJSP, Receita Federal e INSS), cada um com data, meta semanal, matérias e registro de estudo próprios.
 
 `npm test` roda os testes da API e do login.
 
