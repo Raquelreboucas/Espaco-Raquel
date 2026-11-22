@@ -205,9 +205,20 @@ function dropdown({name,value,options,label,onchange,small,placeholder}){
  return wrap}
 function tabs(items,cur,label,onSelect){
  const idOf=t=>'tab-'+t.id;
- return h('div',{class:'ds-tabs',role:'tablist','aria-label':label},items.map((t,i)=>h('button',{type:'button',class:'ds-tab',role:'tab',id:idOf(t),'aria-selected':String(t.id===cur),tabindex:t.id===cur?'0':'-1',
+ const list=h('div',{class:'ds-tabs',role:'tablist','aria-label':label},items.map((t,i)=>h('button',{type:'button',class:'ds-tab',role:'tab',id:idOf(t),'aria-selected':String(t.id===cur),tabindex:t.id===cur?'0':'-1',
   onclick:()=>onSelect(t.id,idOf(t)),
-  onkeydown:e=>{const d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(!d)return;e.preventDefault();const n=items[(i+d+items.length)%items.length];onSelect(n.id,idOf(n))}},t.name,t.count!=null?[' ',h('small',null,t.count)]:null)))}
+  onkeydown:e=>{const d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(!d)return;e.preventDefault();const n=items[(i+d+items.length)%items.length];onSelect(n.id,idOf(n))}},t.name,t.count!=null?[' ',h('small',null,t.count)]:null)));
+ const arrow=(dir)=>h('button',{type:'button',class:'tab-arrow',hidden:true,tabindex:'-1','aria-label':dir<0?'Ver abas anteriores':'Ver próximas abas',html:ICONS.chev,style:dir<0?'transform:rotate(180deg)':null,
+  onclick:()=>list.scrollBy({left:dir*Math.max(160,list.clientWidth*.6),behavior:'smooth'})});
+ const prev=arrow(-1),next=arrow(1);
+ const update=()=>{prev.hidden=list.scrollLeft<=1;next.hidden=list.scrollLeft+list.clientWidth>=list.scrollWidth-1};
+ list.addEventListener('scroll',update,{passive:true});
+ requestAnimationFrame(()=>{
+  const sel=list.querySelector('[aria-selected="true"]');
+  if(sel){if(sel.offsetLeft<list.scrollLeft)list.scrollLeft=sel.offsetLeft-8;else if(sel.offsetLeft+sel.offsetWidth>list.scrollLeft+list.clientWidth)list.scrollLeft=sel.offsetLeft+sel.offsetWidth-list.clientWidth+8}
+  update();
+  if(window.ResizeObserver)new ResizeObserver(update).observe(list)});
+ return h('div',{class:'ds-tabs-wrap'},prev,list,next)}
 function shrink(file,max=480){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();
  im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',0.82))};
@@ -505,7 +516,6 @@ function viewPlanner(){
   h('div',{class:'row',style:'align-items:flex-start;gap:var(--space-5)'},
    h('div',{class:'postit'},h('label',{for:'focus'},'Foco da semana'),h('textarea',{id:'focus',rows:3,placeholder:'O que mais importa nesta semana?',maxLength:200,oninput:e=>{P.focus[ws]=e.target.value;save('planner')}},P.focus[ws]||'')),
    h('div',{style:'flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;padding-top:8px'},h('span',{class:'muted',style:'font-weight:700'},'Tarefas feitas: '+wkTasks.filter(t=>t.done).length+' de '+wkTasks.length),prog(wkTasks.filter(t=>t.done).length,wkTasks.length))),
-  h('h2',{class:'bar'},'Planejamento semanal'),
   h('div',{class:'week'},WD.map((w,i)=>{
    const d=addDays(weekStart,i),k=iso(d),ts=P.tasks.filter(t=>t.date===k),inpId='nt-'+k;
    const add=()=>{const el=document.getElementById(inpId),v=el.value.trim();if(!v)return;P.tasks.push({id:uid(),date:k,text:v,done:false});save('planner');rerender(inpId)};

@@ -236,3 +236,11 @@ body.is-auth .auth{display:grid;min-height:100vh;place-items:center;padding:var(
 
 .exam-card{text-align:left;font:inherit;color:var(--text);cursor:pointer;gap:var(--space-4);transition:transform .6s cubic-bezier(.2,.7,.2,1),box-shadow .6s cubic-bezier(.2,.7,.2,1),border-color .6s}
 .exam-card:hover{transform:translateY(-4px);border-color:var(--line-strong);box-shadow:var(--shadow-glow)}
+
+.ds-tabs{scrollbar-width:none;-ms-overflow-style:none;flex:1}
+.ds-tabs::-webkit-scrollbar{display:none}
+.ds-tabs-wrap{display:flex;align-items:center;gap:var(--space-2);min-width:0}
+.tab-arrow{display:inline-grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-pill);border:1.5px solid var(--line-strong);background:var(--surface);color:var(--text);cursor:pointer;padding:0}
+.tab-arrow:hover{background:var(--hover-bg)}
+.tab-arrow[hidden]{display:none}
+.tab-arrow svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
