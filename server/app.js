@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, normalize, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SECTIONS, ValidationError } from './db.js';
+import { pageImage, PreviewError } from './preview.js';
 import { hashPassword, verifyPassword, DUMMY_HASH, newToken, hashToken, EMAIL_RE } from './auth.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,11 @@ export function createHandler(getStore) {
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Disposition': 'attachment; filename="meu-espaco-backup.json"',
       });
+    }
+    if (method === 'POST' && path === '/api/link-image') {
+      const b = await readBody(req);
+      try { return send(res, 200, { image: await pageImage(String(b?.url ?? '')) }); }
+      catch (e) { if (e instanceof PreviewError) throw new HttpError(422, e.message); throw e; }
     }
     const m = path.match(/^\/api\/state\/([a-z]+)$/);
     if (m && method === 'PUT') {

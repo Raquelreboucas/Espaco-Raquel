@@ -224,6 +224,13 @@ function shrink(file,max=480){return new Promise((res,rej)=>{const u=URL.createO
  im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',0.82))};
  im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Não foi possível ler a imagem.'))};im.src=u})}
+function shrinkUrl(src,max=480){return new Promise((res,rej)=>{const im=new Image();
+ im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.82))};
+ im.onerror=()=>rej(new Error('Não foi possível ler a foto do site.'));im.src=src})}
+async function fetchLinkImage(url){
+ const r=await api('/api/link-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+ return shrinkUrl(r.image)}
 function uploadField(label,state,alt,fail){
  const thumb=h('div',{class:'ds-upload-thumb'}),file=h('input',{type:'file',accept:'image/*',style:'display:none','aria-label':label}),
   pick=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>file.click()}),
@@ -231,7 +238,7 @@ function uploadField(label,state,alt,fail){
  const draw=()=>{thumb.replaceChildren();if(state.img)thumb.append(h('img',{src:state.img,alt:alt||'Foto do item'}));else thumb.append('▢');
   pick.textContent=state.img?'Trocar foto':'Escolher foto';rm.style.display=state.img?'':'none'};
  file.addEventListener('change',async()=>{const f=file.files[0];if(!f)return;try{state.img=await shrink(f)}catch(e){fail&&fail(e.message)}draw()});
- draw();
+ draw();state.redraw=draw;
  return h('div',{class:'ds-field'},h('span',{class:'ds-label',style:'font-size:14px;font-weight:600'},label),h('div',{class:'ds-upload'},thumb,h('div',{class:'row'},pick,rm,file),),h('span',{class:'ds-hint'},'JPG ou PNG. A foto é reduzida antes de salvar.'))}
 
 /* ---------- helpers de UI ---------- */
@@ -270,6 +277,13 @@ function viewInicio(){
 function goalPct(g){return g.steps.length?pct(g.steps.filter(s=>s.d).length,g.steps.length):(g.done?100:0)}
 
 /* ---------- Wishlists ---------- */
+let wlNote='',wlBusy=false;
+async function bulkImages(items){
+ const todo=items.filter(i=>i.link&&!i.img);if(!todo.length||wlBusy){wlNote=wlBusy?'':'Nenhum desejo com link e sem foto nesta categoria.';rerender();return}
+ wlBusy=true;let ok=0;
+ for(let n=0;n<todo.length;n++){wlNote='Buscando fotos… '+(n+1)+' de '+todo.length;rerender();
+  try{todo[n].img=await fetchLinkImage(todo[n].link);ok++;save('wishlist')}catch(e){}}
+ wlBusy=false;wlNote=ok+' de '+todo.length+(todo.length===1?' foto encontrada.':' fotos encontradas.')+(ok<todo.length?' As outras lojas não informam foto. Escolha manualmente no botão de editar.':'');rerender()}
 let wlFilter='all',wlShowDone=true,wlView='cartoes',seededMsg='';
 const SEED_ID='eletros-2026-11';
 const SEED=[
@@ -331,6 +345,14 @@ function itemModal(it){
  const catHasBox=id=>!!(cats.find(c=>c.id===id)||{}).box;
  const boxWrap=h('div',null,h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'box',value:'sim',checked:it.box!==false}),'Usar a caixinha para este desejo'));
  boxWrap.hidden=!catHasBox(it.cat);
+ const modalErr=m=>{const e=document.querySelector('.modal .err');if(e){e.textContent=m;e.style.display='block'}};
+ const fetchBtn=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:async()=>{
+  const link=normUrl((document.querySelector('.modal [name=link]')||{}).value);
+  if(!link){modalErr('Cole o link do produto antes de buscar a foto.');return}
+  fetchBtn.disabled=true;fetchBtn.textContent='Buscando a foto…';
+  try{st.img=await fetchLinkImage(link);st.redraw&&st.redraw();const e=document.querySelector('.modal .err');if(e)e.style.display='none'}
+  catch(e){modalErr(e.message)}
+  finally{fetchBtn.disabled=false;fetchBtn.textContent='Buscar foto pelo link'}}},'Buscar foto pelo link');
  modal(isNew?'Novo desejo':'Editar desejo',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
   field('Item',h('input',{class:'inp',name:'name',value:it.name,placeholder:'Ex.: Luminária de mesa',maxLength:120,autocomplete:'off'})),
   field('Marca/modelo',h('input',{class:'inp',name:'brand',value:it.brand||'',maxLength:140,autocomplete:'off'})),
@@ -344,6 +366,7 @@ function itemModal(it){
    field('Prioridade',dropdown({name:'prio',value:it.prio,label:'Prioridade',options:[['alta','Alta'],['media','Média'],['baixa','Baixa']]}))),
   boxWrap,
   field('Link do produto',h('input',{class:'inp',name:'link',value:it.link,placeholder:'https://',autocomplete:'off'})),
+  h('div',{class:'row'},fetchBtn),
   uploadField('Foto do produto',st,it.name,m=>{const e=document.querySelector('.modal .err');if(e){e.textContent=m;e.style.display='block'}}),
   field('Observação',h('textarea',{class:'inp',name:'note',maxLength:400},it.note||''))),{
   onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome do item.');return false}
@@ -423,11 +446,16 @@ function wlCard(i,cname){
    fl('Preço estimado (R$)',h('strong',null,i.price!=null?num.format(i.price):'—')),
    h('div',{class:'row'},h('span',{class:'badge '+pc},'Prioridade '+pl.toLowerCase())),
    i.note?h('p',{class:'muted',style:'margin:0;overflow-wrap:anywhere'},i.note):null,
-   i.link?h('a',{class:'btn btn-ghost btn-sm',href:i.link,target:'_blank',rel:'noopener noreferrer',style:'align-self:flex-start'},'Abrir produto'):null),
+   i.link?h('a',{class:'btn btn-ghost btn-sm',href:i.link,target:'_blank',rel:'noopener noreferrer',style:'align-self:flex-start'},'Abrir produto'):h('button',{type:'button',class:'btn btn-ghost btn-sm',style:'align-self:flex-start',onclick:()=>linkModal(i)},'+ Adicionar link')),
   h('div',{class:'tile-foot'},
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},
     checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()}),'Comprei?'),
    h('span',{class:'sp'}),h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit}),h('button',{class:'icon-btn','aria-label':'Excluir '+i.name,onclick:()=>delItem(i),html:ICONS.trash})))}
+function linkModal(i){
+ modal('Link do produto',()=>field('Endereço da loja',h('input',{class:'inp',name:'link',value:i.link||'',placeholder:'https://',autocomplete:'off',inputmode:'url'})),{
+  onSubmit(fd,fail){const raw=String(fd.get('link')).trim(),link=normUrl(raw);if(!link){fail('Cole o endereço completo da loja, como https://loja.com/produto.');return false}
+   i.link=link;save('wishlist');rerender();
+   if(!i.img)fetchLinkImage(link).then(img=>{if(!i.img&&i.link===link){i.img=img;save('wishlist');rerender()}}).catch(()=>{})},submit:'Salvar link'})}
 function delItem(i){
  modal('Excluir desejo?',()=>h('p',{style:'margin:0'},'“'+i.name+'” será removido da lista.'),{submit:'Excluir',onSubmit:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==i.id);save('wishlist');rerender()}})}
 function wlCards(items,cname){
@@ -437,7 +465,7 @@ function wlCards(items,cname){
   rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem cômodo')===r);
    return h('section',{'aria-label':r,style:'display:flex;flex-direction:column;gap:var(--space-3)'},
     h('div',{class:'row'},h('h2',{style:'margin:0;font-size:20px'},r),h('span',{class:'badge'},g.length+(g.length===1?' item':' itens')),h('span',{class:'badge'},'Subtotal '+brl.format(g.reduce((a,i)=>a+(i.price||0),0)))),
-    h('div',{class:'grid'},g.map(i=>wlCard(i,cname))))}),
+    h('div',{class:'grid grid-sm'},g.map(i=>wlCard(i,cname))))}),
   h('div',{class:'grid'},h('button',{class:'new',onclick:()=>itemModal()},'+ Novo desejo')),
   items.length?h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total))):null)}
 function depositModal(c){
@@ -480,10 +508,12 @@ function viewWishlists(){
  const cur=W.cats.find(c=>c.id===wlFilter);
  return h('div',{class:'page'},
   head('Lista de desejos',['Minhas ',h('em',null,'wishlists')],[h('button',{class:'btn btn-ghost',onclick:()=>catModal()},'+ Categoria'),h('button',{class:'btn btn-primary',onclick:()=>itemModal()},'+ Novo desejo')]),
+  wlNote?h('p',{class:'callout',role:'status'},wlNote):null,
   h('div',{class:'hd-row'},tabs(W.cats.map(c=>({id:c.id,name:c.name,count:count(c.id)})),wlFilter,'Categorias',(id,fid)=>{wlFilter=id;rerender(fid)}),
    cur?h('button',{class:'icon-btn','aria-label':'Editar categoria '+cur.name,onclick:()=>catModal(cur),html:ICONS.edit}):null),
   cur?catTotals(W.items.filter(i=>i.cat===cur.id),cur):null,
   h('div',{class:'row'},
+   h('button',{class:'chip',disabled:wlBusy,onclick:()=>bulkImages(W.items.filter(i=>i.cat===wlFilter))},wlBusy?'Buscando…':'Buscar fotos dos links'),
    h('div',{class:'row',role:'group','aria-label':'Visualização'},
     h('button',{class:'chip','aria-pressed':String(wlView==='tabela'),onclick:()=>{wlView='tabela';rerender()}},'Tabela'),
     h('button',{class:'chip','aria-pressed':String(wlView==='cartoes'),onclick:()=>{wlView='cartoes';rerender()}},'Cartões')),
@@ -537,6 +567,7 @@ function goalNode(g){
 
 /* ---------- Planner semanal ---------- */
 let weekStart=sunday(new Date()),calOpen=false,calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);
+const dm=d=>pad(d.getDate())+'/'+pad(d.getMonth()+1);
 let calOff=null;
 function calStop(){if(calOff){const f=calOff;calOff=null;f()}}
 function calWatch(){
@@ -558,8 +589,8 @@ function calendarPanel(P){
   h('div',{class:'cal-grid'},
    ['D','S','T','Q','Q','S','S'].map((w,i)=>h('span',{class:'cal-h','aria-hidden':'true'},w)),
    Array.from({length:42},(_,i)=>addDays(start,i)).map(d=>{const k=iso(d),inWeek=k>=ws&&k<=we;
-    return h('button',{type:'button',class:'cal-d'+(d.getMonth()!==first.getMonth()?' out':'')+(k===t?' today':'')+(inWeek?' sel':''),'aria-pressed':String(inWeek),
-     'aria-label':fmt({weekday:'long',day:'numeric',month:'long'}).format(d)+(withTasks.has(k)?', com tarefas':''),
+    return h('button',{type:'button',disabled:d.getDay()!==0,class:'cal-d'+(d.getMonth()!==first.getMonth()?' out':'')+(k===t?' today':'')+(inWeek?' sel':''),'aria-pressed':String(inWeek),
+     'aria-label':d.getDay()===0?'Semana de '+dm(d)+' a '+dm(addDays(d,6)):fmt({weekday:'long',day:'numeric',month:'long'}).format(d)+' (escolha o domingo da semana)',
      onclick:()=>{weekStart=sunday(d);calMonth=new Date(d.getFullYear(),d.getMonth(),1);calOpen=false;calStop();rerender()}},d.getDate(),withTasks.has(k)?h('i',{class:'cal-dot'}):null)})),
   ws!==iso(sunday(new Date()))?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{weekStart=sunday(new Date());calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);calOpen=false;calStop();rerender()}},'Ir para esta semana'):null)}
 function moveTaskModal(t){
@@ -578,7 +609,7 @@ function viewPlanner(){
  return h('div',{class:'page'},
   head(range,['Planner ',h('em',null,'semanal')],[h('div',{class:'cal-anchor'},
    h('button',{class:'btn btn-ghost','aria-label':'Semana anterior',onclick:()=>{weekStart=addDays(weekStart,-7);rerender()}},'‹'),
-   h('button',{class:'btn btn-ghost','data-cal-btn':true,'aria-expanded':String(calOpen),'aria-haspopup':'dialog',onclick:()=>{calOpen=!calOpen;calStop();calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);rerender()}},'Esta semana'),
+   h('button',{class:'btn btn-ghost','data-cal-btn':true,'aria-expanded':String(calOpen),'aria-haspopup':'dialog',onclick:()=>{calOpen=!calOpen;calStop();calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);rerender()}},isThis?'Esta semana':dm(weekStart)+' a '+dm(we)),
    h('button',{class:'btn btn-ghost','aria-label':'Próxima semana',onclick:()=>{weekStart=addDays(weekStart,7);rerender()}},'›'),
    calOpen?calendarPanel(P):null)]),
   h('div',{class:'row',style:'align-items:flex-start;gap:var(--space-5)'},

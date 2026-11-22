@@ -190,3 +190,22 @@ test('migra um banco antigo (um concurso só) para o concurso TJSP', async () =>
   store.close();
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows */ }
 });
+
+test('busca de foto do link: extrai a imagem e bloqueia endereços internos', async () => {
+  const { extractImageUrl, isPrivateIp } = await import('./preview.js');
+  const html = '<head><meta property="og:image" content="/img/geladeira.jpg?a=1&amp;b=2"><meta name="twitter:image" content="https://x.com/t.png"></head>';
+  assert.equal(extractImageUrl(html, 'https://loja.com/p/1'), 'https://loja.com/img/geladeira.jpg?a=1&b=2');
+  assert.equal(extractImageUrl('<meta content="https://x.com/t.png" name="twitter:image">', 'https://loja.com/'), 'https://x.com/t.png');
+  assert.equal(extractImageUrl('<title>sem foto</title>', 'https://loja.com/'), null);
+  for (const ip of ['127.0.0.1', '10.0.0.5', '192.168.1.1', '172.16.0.1', '169.254.169.254', '::1', 'fd00::1', '::ffff:127.0.0.1']) assert.equal(isPrivateIp(ip), true, ip);
+  for (const ip of ['8.8.8.8', '151.101.1.69', '2606:4700::1111']) assert.equal(isPrivateIp(ip), false, ip);
+
+  const { base, stop } = await start();
+  const c = client(base);
+  assert.equal((await c.post('/api/link-image', { url: 'https://loja.com' })).status, 401);
+  await signup(c);
+  for (const url of ['http://127.0.0.1/', 'http://localhost:3000/api/state', 'http://169.254.169.254/latest/meta-data', 'file:///etc/passwd', 'ftp://x.com/a', 'nao-e-url']) {
+    assert.equal((await c.post('/api/link-image', { url })).status, 422, url);
+  }
+  stop();
+});
