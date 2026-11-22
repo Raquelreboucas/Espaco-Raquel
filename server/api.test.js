@@ -1,0 +1,150 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openDb } from './db.js';
+import { createHandler } from './app.js';
+
+const start = async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'espaco-'));
+  const store = await openDb({ url: 'file:' + join(dir, 'test.db').replaceAll('\\', '/') });
+  const server = createServer(createHandler(async () => store));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return { base, stop: () => { server.closeAllConnections(); server.close(); store.close(); try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows pode manter o arquivo preso */ } } };
+};
+
+/** Cliente minúsculo que guarda o cookie de sessão. */
+const client = (base) => {
+  let sid = '';
+  const call = async (method, path, body, headers = {}) => {
+    const r = await fetch(base + path, {
+      method,
+      headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(sid ? { Cookie: sid } : {}), ...headers },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    const set = r.headers.get('set-cookie');
+    if (set) sid = set.startsWith('sid=;') ? '' : set.split(';')[0];
+    const text = await r.text();
+    return { status: r.status, headers: r.headers, json: text && r.headers.get('content-type')?.includes('json') ? JSON.parse(text) : text };
+  };
+  return { call, get: (p) => call('GET', p), put: (p, b) => call('PUT', p, b), post: (p, b) => call('POST', p, b) };
+};
+const signup = (c, email = 'raquel@exemplo.com', password = 'senha-forte-123') => c.post('/api/auth/register', { email, password, name: 'Raquel' });
+
+test('serve o front-end e bloqueia tudo sem login', async () => {
+  const { base, stop } = await start();
+  const c = client(base);
+  const html = await c.get('/');
+  assert.equal(html.status, 200);
+  assert.match(html.json, /Meu <em>espaço/);
+  assert.match(html.headers.get('content-security-policy'), /default-src 'self'/);
+  assert.equal((await c.get('/..%2fserver%2fdb.js')).status, 404);
+  for (const p of ['/api/state', '/api/export', '/api/auth/me']) assert.equal((await c.get(p)).status, 401, p);
+  assert.equal((await c.put('/api/state/planner', { tasks: [], focus: {} })).status, 401);
+  stop();
+});
+
+test('cadastro, sessão, logout e login', async () => {
+  const { base, stop } = await start();
+  const c = client(base);
+  const r = await signup(c, '  Raquel@Exemplo.com ');
+  assert.equal(r.status, 201);
+  assert.equal(r.json.user.email, 'raquel@exemplo.com');
+  assert.equal(r.json.user.seed, true); // primeira conta
+  assert.match(r.headers.get('set-cookie'), /HttpOnly/);
+  assert.match(r.headers.get('set-cookie'), /SameSite=Lax/);
+  assert.equal((await c.get('/api/auth/me')).json.user.name, 'Raquel');
+
+  assert.equal((await c.post('/api/auth/logout')).status, 204);
+  assert.equal((await c.get('/api/auth/me')).status, 401);
+
+  assert.equal((await c.post('/api/auth/login', { email: 'raquel@exemplo.com', password: 'errada-errada' })).status, 401);
+  assert.equal((await c.post('/api/auth/login', { email: 'raquel@exemplo.com', password: 'senha-forte-123' })).status, 200);
+  assert.equal((await c.get('/api/auth/me')).status, 200);
+  stop();
+});
+
+test('valida e-mail e senha no cadastro; recusa e-mail repetido', async () => {
+  const { base, stop } = await start();
+  const c = client(base);
+  assert.equal((await signup(c, 'sem-arroba')).status, 400);
+  assert.equal((await signup(c, 'a@b.com', 'curta')).status, 400);
+  assert.equal((await signup(client(base))).status, 201);
+  assert.equal((await signup(client(base), 'RAQUEL@exemplo.com')).status, 409);
+  stop();
+});
+
+test('bloqueia depois de 5 senhas erradas', async () => {
+  const { base, stop } = await start();
+  await signup(client(base));
+  const c = client(base);
+  for (let i = 0; i < 5; i++) assert.equal((await c.post('/api/auth/login', { email: 'raquel@exemplo.com', password: 'errada-' + i })).status, 401);
+  assert.equal((await c.post('/api/auth/login', { email: 'raquel@exemplo.com', password: 'senha-forte-123' })).status, 429);
+  stop();
+});
+
+test('grava e relê todas as seções; cada usuário só vê os próprios dados', async () => {
+  const { base, stop } = await start();
+  const a = client(base), b = client(base);
+  await signup(a);
+  const second = await signup(b, 'outra@exemplo.com');
+  assert.equal(second.json.user.seed, false);
+
+  const nulls = { wishlist: null, goals: null, planner: null, study: null };
+  assert.deepEqual((await a.get('/api/state')).json.sections, nulls);
+
+  const data = {
+    wishlist: {
+      cats: [{ id: 'c1', name: 'Casa', tone: 'mint', note: 'n' }],
+      items: [{ id: 'i1', cat: 'c1', name: 'Geladeira', brand: 'X', room: 'Cozinha', price: 10.5, link: 'https://a.com', img: '', prio: 'alta', note: '', done: true }],
+      seeds: ['s1'],
+    },
+    goals: {
+      areas: [{ id: 'a1', name: 'Estudos', tone: 'pink' }],
+      items: [{ id: 'g1', area: 'a1', title: 'Curso', due: '2027-03', done: false, steps: [{ id: 's1', t: 'um', d: true }, { id: 's2', t: 'dois', d: false }] }],
+    },
+    planner: { tasks: [{ id: 't1', date: '2026-11-22', text: 'x', done: false }], focus: { '2026-11-16': 'foco' } },
+    study: {
+      exam: { name: 'TJSP', date: '2027-01-10' }, weeklyHours: 12,
+      subjects: [{ id: 'm1', name: 'Port', topics: [{ id: 'p1', t: 'crase', d: true }] }],
+      log: [{ id: 'l1', date: '2026-11-22', subject: 'Port', min: 60 }],
+    },
+  };
+  for (const [s, body] of Object.entries(data)) assert.equal((await a.put('/api/state/' + s, body)).status, 204);
+  assert.deepEqual((await a.get('/api/state')).json.sections, data);
+
+  // a outra conta usa os mesmos ids sem conflito e não enxerga nada da primeira
+  assert.deepEqual((await b.get('/api/state')).json.sections, nulls);
+  assert.equal((await b.put('/api/state/planner', { tasks: [{ id: 't1', date: '2026-11-23', text: 'dela', done: false }], focus: {} })).status, 204);
+  assert.equal((await a.get('/api/state')).json.sections.planner.tasks[0].text, 'x');
+
+  data.goals.items = []; // regravar substitui: remoções persistem
+  await a.put('/api/state/goals', data.goals);
+  assert.deepEqual((await a.get('/api/state')).json.sections.goals.items, []);
+  assert.equal((await a.get('/api/export')).json.data.study.exam.name, 'TJSP');
+  stop();
+});
+
+test('rejeita dados inválidos sem alterar o que já estava salvo', async () => {
+  const { base, stop } = await start();
+  const c = client(base);
+  await signup(c);
+  await c.put('/api/state/wishlist', { cats: [{ id: 'c1', name: 'Casa', tone: 'mint' }], items: [], seeds: [] });
+  assert.equal((await c.put('/api/state/wishlist', { cats: [], items: [{ id: 'x', cat: 'nao-existe', name: 'a' }], seeds: [] })).status, 400);
+  assert.equal((await c.put('/api/state/planner', { tasks: 'x', focus: {} })).status, 400);
+  assert.equal((await c.put('/api/state/nada', {})).status, 404);
+  assert.equal((await c.get('/api/state')).json.sections.wishlist.cats.length, 1);
+  stop();
+});
+
+test('recusa pedidos que alteram dados vindos de outro site', async () => {
+  const { base, stop } = await start();
+  const c = client(base);
+  await signup(c);
+  const r = await c.call('PUT', '/api/state/planner', { tasks: [], focus: {} }, { Origin: 'https://site-malicioso.com' });
+  assert.equal(r.status, 403);
+  stop();
+});

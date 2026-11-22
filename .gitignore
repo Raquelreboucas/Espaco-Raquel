@@ -1,0 +1,7 @@
+data/*.db
+data/*.db-*
+node_modules/
+.claude/
+.env
+.env.*
+.vercel/

@@ -1,0 +1,18 @@
+{
+  "name": "meu-espaco-pessoal",
+  "version": "1.0.0",
+  "description": "Plataforma de espaço pessoal: wishlists, objetivos, planner semanal e estudos para concurso.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test server/api.test.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0"
+  }
+}
