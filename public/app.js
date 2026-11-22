@@ -314,7 +314,7 @@ function itemModal(it){
   h('div',{class:'form-grid'},
    field('Cômodo',h('input',{class:'inp',name:'room',value:it.room||'',maxLength:60,autocomplete:'off',list:'rooms'})),
    field('Preço estimado (R$)',h('input',{class:'inp',name:'price',value:it.price==null?'':String(it.price).replace('.',','),placeholder:'0,00',autocomplete:'off'})),
-   field('Comprei?',dropdown({name:'done',value:it.done?'sim':'nao',label:'Comprei?',options:[['nao','Não'],['sim','Sim']]}))),
+   h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;align-self:flex-end;min-height:44px;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'done',value:'sim',checked:it.done}),'Comprei?')),
   h('datalist',{id:'rooms'},rooms.map(r=>h('option',{value:r}))),
   h('div',{class:'form-grid'},
    field('Categoria',dropdown({name:'cat',value:it.cat,label:'Categoria',options:cats.map(c=>[c.id,c.name])})),
@@ -354,7 +354,7 @@ function wlTable(items){
    h('tbody',null,rows.map(i=>h('tr',{class:i.done?'done':''},
     h('td',{style:'font-weight:700'},i.img?h('img',{class:'thumb',src:i.img,alt:''}):null,i.name,i.link?[' ',h('a',{href:i.link,target:'_blank',rel:'noopener noreferrer',style:'font-weight:600;font-size:13px','aria-label':'Abrir '+i.name+' na loja'},'Loja')]:null),h('td',null,i.brand||'—'),h('td',null,i.room||'—'),
     h('td',{class:'num'},i.price!=null?num.format(i.price):'—'),
-    h('td',null,dropdown({small:true,value:i.done?'sim':'nao',label:'Comprei '+i.name+'?',options:[['nao','Não'],['sim','Sim']],onchange:v=>{i.done=v==='sim';save('wishlist');rerender()}})),
+    h('td',null,checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()})),
     h('td',null,h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit}))))))),
   h('div',{class:'tbl-wrap',style:'max-width:560px'},h('table',{class:'tbl',style:'min-width:0'},
    h('caption',{class:'sr'},'Subtotal por cômodo'),
@@ -401,8 +401,8 @@ function wlCard(i,cname){
    i.note?h('p',{class:'muted',style:'margin:0;overflow-wrap:anywhere'},i.note):null,
    i.link?h('a',{class:'btn btn-ghost btn-sm',href:i.link,target:'_blank',rel:'noopener noreferrer',style:'align-self:flex-start'},'Abrir produto'):null),
   h('div',{class:'tile-foot'},
-   h('div',{class:'row',style:'gap:8px;font-size:14px;font-weight:600'},'Comprei?',
-    dropdown({small:true,value:i.done?'sim':'nao',label:'Comprei '+i.name+'?',options:[['nao','Não'],['sim','Sim']],onchange:v=>{i.done=v==='sim';save('wishlist');rerender()}})),
+   h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},
+    checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()}),'Comprei?'),
    h('span',{class:'sp'}),h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit})))}
 function wlCards(items,cname){
  const rooms=[];items.forEach(i=>{const r=i.room||'Sem cômodo';if(!rooms.includes(r))rooms.push(r)});
