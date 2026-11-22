@@ -39,8 +39,16 @@ export async function openDb({ url, authToken } = {}) {
   const client = createClient({ url, authToken });
   await client.executeMultiple('PRAGMA foreign_keys = ON;');
   await migrateOldStudy(client);
+  await addColumn(client, 'wishlist_categories', 'box', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn(client, 'wishlist_items', 'use_box', 'INTEGER NOT NULL DEFAULT 1');
   await client.executeMultiple(readFileSync(join(here, 'schema.sql'), 'utf8'));
   return makeStore(client);
+}
+
+/** Adiciona uma coluna a uma tabela já existente (as tabelas novas já nascem com ela). */
+async function addColumn(client, table, column, ddl) {
+  const cols = (await client.execute(`SELECT name FROM pragma_table_info('${table}')`)).rows.map((r) => r.name);
+  if (cols.length && !cols.includes(column)) await client.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
 }
 
 /** Bancos criados antes dos três concursos: move matérias e registros para o concurso TJSP. */
@@ -74,18 +82,20 @@ function makeStore(client) {
   /* ---------- leitura (monta o mesmo formato que o front-end usa) ---------- */
   const readers = {
     async wishlist(u) {
-      const [cats, items, seeds] = await Promise.all([
-        rows('SELECT id, name, tone, note FROM wishlist_categories WHERE user_id = ? ORDER BY position', [u]),
+      const [cats, items, seeds, deposits] = await Promise.all([
+        rows('SELECT id, name, tone, note, box FROM wishlist_categories WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM wishlist_items WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT seed FROM wishlist_seeds WHERE user_id = ? ORDER BY rowid', [u]),
+        rows('SELECT * FROM wishlist_deposits WHERE user_id = ? ORDER BY position', [u]),
       ]);
       return {
-        cats: cats.map((c) => ({ id: c.id, name: c.name, tone: c.tone, note: c.note })),
+        cats: cats.map((c) => ({ id: c.id, name: c.name, tone: c.tone, note: c.note, box: !!c.box })),
         items: items.map((r) => ({
           id: r.id, cat: r.category_id, name: r.name, brand: r.brand, room: r.room, price: r.price,
-          link: r.link, img: r.img, prio: r.priority, note: r.note, done: !!r.done,
+          link: r.link, img: r.img, prio: r.priority, note: r.note, done: !!r.done, box: !!r.use_box,
         })),
         seeds: seeds.map((r) => r.seed),
+        deposits: deposits.map((d) => ({ id: d.id, cat: d.category_id, date: d.date, amount: d.amount, note: d.note })),
       };
     },
     async goals(u) {
@@ -135,8 +145,9 @@ function makeStore(client) {
   /* ---------- escrita: cada função devolve a lista de comandos (apagar tudo + inserir) ---------- */
   const builders = {
     wishlist(u, d) {
-      const cats = arr(d?.cats, 'cats'), items = arr(d?.items, 'items'), seeds = arr(d?.seeds ?? [], 'seeds');
+      const cats = arr(d?.cats, 'cats'), items = arr(d?.items, 'items'), seeds = arr(d?.seeds ?? [], 'seeds'), deposits = arr(d?.deposits ?? [], 'deposits');
       const out = [
+        st('DELETE FROM wishlist_deposits WHERE user_id = ?', [u]),
         st('DELETE FROM wishlist_items WHERE user_id = ?', [u]),
         st('DELETE FROM wishlist_categories WHERE user_id = ?', [u]),
         st('DELETE FROM wishlist_seeds WHERE user_id = ?', [u]),
@@ -145,15 +156,22 @@ function makeStore(client) {
       cats.forEach((c, i) => {
         const cid = id(c.id, 'cats');
         catIds.add(cid);
-        out.push(st('INSERT INTO wishlist_categories(user_id, id, name, tone, note, position) VALUES (?,?,?,?,?,?)',
-          [u, cid, str(c.name, 40) || 'Sem nome', oneOf(c.tone, TONES, 'mint'), str(c.note, 300), i]));
+        out.push(st('INSERT INTO wishlist_categories(user_id, id, name, tone, note, box, position) VALUES (?,?,?,?,?,?,?)',
+          [u, cid, str(c.name, 40) || 'Sem nome', oneOf(c.tone, TONES, 'mint'), str(c.note, 300), bool(c.box), i]));
       });
       items.forEach((it, i) => {
         if (!catIds.has(it.cat)) throw new ValidationError(`O desejo "${str(it.name, 40)}" aponta para uma categoria inexistente.`);
-        out.push(st(`INSERT INTO wishlist_items(user_id, id, category_id, name, brand, room, price, link, img, priority, note, done, position)
-                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        out.push(st(`INSERT INTO wishlist_items(user_id, id, category_id, name, brand, room, price, link, img, priority, note, done, use_box, position)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [u, id(it.id, 'items'), it.cat, str(it.name, 120) || 'Sem nome', str(it.brand, 140), str(it.room, 60), num(it.price),
-          link(it.link), img(it.img), oneOf(it.prio, PRIOS, 'media'), str(it.note, 400), bool(it.done), i]));
+          link(it.link), img(it.img), oneOf(it.prio, PRIOS, 'media'), str(it.note, 400), bool(it.done), it.box === false ? 0 : 1, i]));
+      });
+      deposits.forEach((dp, i) => {
+        const amount = Number(dp.amount);
+        if (!catIds.has(dp.cat)) throw new ValidationError('Valor da caixinha aponta para uma categoria inexistente.');
+        if (!(amount > 0 && amount <= 1e9) || !ISO_DAY.test(dp.date)) throw new ValidationError('Valor da caixinha inválido.');
+        out.push(st('INSERT INTO wishlist_deposits(user_id, id, category_id, date, amount, note, position) VALUES (?,?,?,?,?,?,?)',
+          [u, id(dp.id, 'deposits'), dp.cat, dp.date, amount, str(dp.note, 80), i]));
       });
       for (const s of new Set(seeds.map((x) => str(x, 80)))) out.push(st('INSERT INTO wishlist_seeds(user_id, seed) VALUES (?,?)', [u, s]));
       return out;

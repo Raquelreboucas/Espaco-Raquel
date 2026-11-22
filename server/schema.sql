@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS wishlist_categories (
   name     TEXT NOT NULL,
   tone     TEXT NOT NULL DEFAULT 'mint' CHECK (tone IN ('mint','peach','pink','yellow','neutral')),
   note     TEXT NOT NULL DEFAULT '',
+  box      INTEGER NOT NULL DEFAULT 0 CHECK (box IN (0,1)),   -- a categoria tem caixinha?
   position INTEGER NOT NULL,
   PRIMARY KEY (user_id, id)
 );
@@ -54,6 +55,19 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
   priority    TEXT NOT NULL DEFAULT 'media' CHECK (priority IN ('alta','media','baixa')),
   note        TEXT NOT NULL DEFAULT '',
   done        INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0,1)),
+  use_box     INTEGER NOT NULL DEFAULT 1 CHECK (use_box IN (0,1)), -- usa a caixinha da categoria?
+  position    INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id),
+  FOREIGN KEY (user_id, category_id) REFERENCES wishlist_categories(user_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS wishlist_deposits (   -- caixinha: dinheiro juntado para os itens da categoria
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id          TEXT NOT NULL,
+  category_id TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  amount      REAL NOT NULL CHECK (amount > 0),
+  note        TEXT NOT NULL DEFAULT '',
   position    INTEGER NOT NULL,
   PRIMARY KEY (user_id, id),
   FOREIGN KEY (user_id, category_id) REFERENCES wishlist_categories(user_id, id)

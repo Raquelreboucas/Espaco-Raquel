@@ -11,7 +11,7 @@ const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
-const monday=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));x.setHours(0,0,0,0);return x};
+const sunday=d=>{const x=new Date(d);x.setDate(x.getDate()-x.getDay());x.setHours(0,0,0,0);return x};
 const fmt=(o)=>new Intl.DateTimeFormat('pt-BR',o);
 const brl=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const todayIso=()=>iso(new Date());
@@ -25,6 +25,7 @@ const ICONS={
  planner:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  concurso:'<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 21V5M9 8h6M9 12h6"/></svg>',
  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+ trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
  edit:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
  chev:'<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
  next:'<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
@@ -261,7 +262,7 @@ function viewInicio(){
    card('planner','Hoje',h('div',null,h('div',{class:'big'},tk.filter(t=>!t.done).length),h('p',{class:'muted',style:'margin:6px 0 0'},tk.length?'Feitas: '+tk.filter(t=>t.done).length+' de '+tk.length:'Nenhuma tarefa para hoje'))),
    card('objetivos','Objetivos',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},gDone+'/'+gAll.length),h('p',{class:'muted',style:'margin:0'},'objetivos concluídos'),prog(gDone,gAll.length))),
    card('wishlists','Wishlists',h('div',null,h('div',{class:'big'},wl.length),h('p',{class:'muted',style:'margin:6px 0 0'},wl.length?'desejos · '+brl.format(wlSum)+' estimados':'Nenhum desejo ainda'))),
-   card('concurso','Concurso',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},left==null?'—':left),h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data de uma prova':next.name+': '+(left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova')),prog(tDone,topics.length),h('p',{class:'muted',style:'margin:0'},Math.round(wk/60*10)/10+' h de estudo nesta semana'))))
+   card('concurso','Concurso',h('div',{style:'display:flex;flex-direction:column;gap:10px'},h('div',{class:'big'},left==null?'—':left),h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data de uma prova':next.name+': '+(left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova')),prog(tDone,topics.length))))
   ,
   h('div',{class:'row muted',style:'justify-content:space-between'},h('span',null,ME?ME.email:''),h('span',{class:'row'},h('a',{href:'/api/export',download:'meu-espaco-backup.json'},'Baixar backup'),h('button',{type:'button',class:'linkbtn',onclick:logout},'Sair'))),
   tk.length?h('div',{class:'card'},h('h3',null,'Tarefas de hoje'),tk.map(t=>h('div',{class:'li'+(t.done?' done':'')},checkbox(t.done,'Concluir '+t.text,e=>{t.done=e.target.checked;save('planner');rerender()}),h('span',{class:'t'},t.text)))):null);
@@ -292,16 +293,24 @@ function migrateCats(W){
  W.cats=W.cats.filter(c=>!(['livros','viagens'].includes(c.name.trim().toLowerCase())&&!W.items.some(i=>i.cat===c.id)));
  for(const[n,t]of[['Casa','mint'],['Moda','pink'],['Beleza','peach'],['Tecnologia','neutral']])if(!W.cats.some(c=>c.name.trim().toLowerCase()===n.toLowerCase()))W.cats.push({id:uid(),name:n,tone:t});
  W.seeds.push('cats-4');save('wishlist')}
+function migrateFocus(){
+ const F=S.planner&&S.planner.focus;if(!F||typeof F!=='object')return;let ch=false;
+ for(const k of Object.keys(F)){const d=parse(k);if(d.getDay()===1){const nk=iso(addDays(d,-1));if(!F[nk])F[nk]=F[k];delete F[k];ch=true}}
+ if(ch)save('planner')}
 function migrateStudy(){
  const X=S.study;if(isArr(X.exams))return;
  const old={name:(X.exam&&X.exam.name)||'',date:(X.exam&&X.exam.date)||'',weeklyHours:Number(X.weeklyHours)||10,subjects:isArr(X.subjects)?X.subjects:[],log:isArr(X.log)?X.log:[]};
  const fresh=defaults().study.exams;
  fresh[0]=Object.assign(fresh[0],{date:old.date,weeklyHours:old.weeklyHours,subjects:old.subjects,log:old.log});
  S.study={exams:fresh};save('study')}
+function migrateBox(W){
+ if(W.seeds.includes('box-1'))return;
+ for(const c of W.cats)if(['casa','tecnologia'].includes(c.name.trim().toLowerCase()))c.box=true;
+ W.seeds.push('box-1');save('wishlist')}
 function applyMigrations(){
- migrateStudy();
- const W=S.wishlist;if(!isArr(W.cats))W.cats=defaults().wishlist.cats;if(!isArr(W.items))W.items=[];if(!isArr(W.seeds))W.seeds=[];
- migrateCats(W);
+ migrateStudy();migrateFocus();
+ const W=S.wishlist;if(!isArr(W.cats))W.cats=defaults().wishlist.cats;if(!isArr(W.items))W.items=[];if(!isArr(W.seeds))W.seeds=[];if(!isArr(W.deposits))W.deposits=[];
+ migrateCats(W);migrateBox(W);
  if(W.seeds.includes(SEED_ID)||!canSeed)return false;
  let cat=W.cats.find(c=>c.name.trim().toLowerCase()==='casa');
  if(!cat){cat={id:uid(),name:'Casa',tone:'mint'};W.cats.unshift(cat)}
@@ -319,6 +328,9 @@ function itemModal(it){
  const isNew=!it;it=it||{id:uid(),cat:wlFilter!=='all'?wlFilter:cats[0].id,name:'',brand:'',room:'',price:null,link:'',img:'',prio:'media',note:'',done:false};
  const st={img:it.img||''};
  const rooms=[...new Set(S.wishlist.items.map(i=>i.room).filter(Boolean))];
+ const catHasBox=id=>!!(cats.find(c=>c.id===id)||{}).box;
+ const boxWrap=h('div',null,h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'box',value:'sim',checked:it.box!==false}),'Usar a caixinha para este desejo'));
+ boxWrap.hidden=!catHasBox(it.cat);
  modal(isNew?'Novo desejo':'Editar desejo',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
   field('Item',h('input',{class:'inp',name:'name',value:it.name,placeholder:'Ex.: Luminária de mesa',maxLength:120,autocomplete:'off'})),
   field('Marca/modelo',h('input',{class:'inp',name:'brand',value:it.brand||'',maxLength:140,autocomplete:'off'})),
@@ -328,15 +340,16 @@ function itemModal(it){
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;align-self:flex-end;min-height:44px;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'done',value:'sim',checked:it.done}),'Comprei?')),
   h('datalist',{id:'rooms'},rooms.map(r=>h('option',{value:r}))),
   h('div',{class:'form-grid'},
-   field('Categoria',dropdown({name:'cat',value:it.cat,label:'Categoria',options:cats.map(c=>[c.id,c.name])})),
+   field('Categoria',dropdown({name:'cat',value:it.cat,label:'Categoria',options:cats.map(c=>[c.id,c.name]),onchange:v=>{boxWrap.hidden=!catHasBox(v)}})),
    field('Prioridade',dropdown({name:'prio',value:it.prio,label:'Prioridade',options:[['alta','Alta'],['media','Média'],['baixa','Baixa']]}))),
+  boxWrap,
   field('Link do produto',h('input',{class:'inp',name:'link',value:it.link,placeholder:'https://',autocomplete:'off'})),
   uploadField('Foto do produto',st,it.name,m=>{const e=document.querySelector('.modal .err');if(e){e.textContent=m;e.style.display='block'}}),
   field('Observação',h('textarea',{class:'inp',name:'note',maxLength:400},it.note||''))),{
   onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome do item.');return false}
    const price=toNum(fd.get('price'));if(Number.isNaN(price)){fail('Preço inválido. Use números, como 129,90.');return false}
    const raw=String(fd.get('link')).trim(),link=normUrl(raw);if(raw&&!link){fail('Link inválido. Cole o endereço completo da loja.');return false}
-   Object.assign(it,{name,brand:String(fd.get('brand')).trim(),room:String(fd.get('room')).trim(),cat:fd.get('cat'),prio:fd.get('prio'),price,link,img:st.img,note:String(fd.get('note')).trim(),done:fd.get('done')==='sim'});
+   Object.assign(it,{name,brand:String(fd.get('brand')).trim(),room:String(fd.get('room')).trim(),cat:fd.get('cat'),prio:fd.get('prio'),price,link,img:st.img,note:String(fd.get('note')).trim(),done:fd.get('done')==='sim',box:catHasBox(fd.get('cat'))?fd.get('box')==='sim':true});
    if(isNew)S.wishlist.items.push(it);save('wishlist');rerender()},
   onDelete:isNew?null:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==it.id);save('wishlist');rerender()},
   submit:isNew?'Adicionar':'Salvar'});
@@ -348,7 +361,7 @@ function catModal(c){
   field('Observação da categoria',h('textarea',{class:'inp',name:'note',maxLength:300},c.note||''))),{
   onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome da categoria.');return false}
    c.name=name;c.tone=fd.get('tone');c.note=String(fd.get('note')).trim();if(isNew)S.wishlist.cats.push(c);save('wishlist');rerender()},
-  onDelete:isNew?null:(err)=>{if(S.wishlist.items.some(i=>i.cat===c.id)){err.textContent='Mova ou exclua os desejos desta categoria antes de excluí-la.';err.style.display='block';return false}
+  onDelete:isNew?null:(err)=>{if(S.wishlist.items.some(i=>i.cat===c.id)||S.wishlist.deposits.some(d=>d.cat===c.id)){err.textContent='Mova ou exclua os desejos e os valores da caixinha desta categoria antes de excluí-la.';err.style.display='block';return false}
    S.wishlist.cats=S.wishlist.cats.filter(x=>x.id!==c.id);if(wlFilter===c.id)wlFilter='all';save('wishlist');rerender()},
   submit:isNew?'Criar':'Salvar'});
 }
@@ -414,7 +427,9 @@ function wlCard(i,cname){
   h('div',{class:'tile-foot'},
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},
     checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()}),'Comprei?'),
-   h('span',{class:'sp'}),h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit})))}
+   h('span',{class:'sp'}),h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit}),h('button',{class:'icon-btn','aria-label':'Excluir '+i.name,onclick:()=>delItem(i),html:ICONS.trash})))}
+function delItem(i){
+ modal('Excluir desejo?',()=>h('p',{style:'margin:0'},'“'+i.name+'” será removido da lista.'),{submit:'Excluir',onSubmit:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==i.id);save('wishlist');rerender()}})}
 function wlCards(items,cname){
  const rooms=[];items.forEach(i=>{const r=i.room||'Sem cômodo';if(!rooms.includes(r))rooms.push(r)});
  const total=items.reduce((a,i)=>a+(i.price||0),0);
@@ -425,13 +440,34 @@ function wlCards(items,cname){
     h('div',{class:'grid'},g.map(i=>wlCard(i,cname))))}),
   h('div',{class:'grid'},h('button',{class:'new',onclick:()=>itemModal()},'+ Novo desejo')),
   items.length?h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total))):null)}
+function depositModal(c){
+ modal('Adicionar à caixinha',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
+  field('Valor (R$)',h('input',{class:'inp',name:'amount',placeholder:'0,00',autocomplete:'off',inputmode:'decimal'})),
+  field('Data',h('input',{class:'inp',type:'date',name:'date',value:todayIso()})),
+  field('Observação (opcional)',h('input',{class:'inp',name:'note',maxLength:80,autocomplete:'off',placeholder:'Ex.: 13º salário'}))),{
+  onSubmit(fd,fail){const v=toNum(fd.get('amount'));
+   if(v==null||Number.isNaN(v)||v<=0){fail('Digite um valor maior que zero, como 150,00.');return false}
+   if(v>1e9){fail('Esse valor é alto demais.');return false}
+   S.wishlist.deposits.push({id:uid(),cat:c.id,date:String(fd.get('date')||'')||todayIso(),amount:v,note:String(fd.get('note')).trim()});
+   save('wishlist');rerender()},submit:'Adicionar'})}
 function catTotals(all,c){
- const sum=l=>l.reduce((a,i)=>a+(i.price||0),0),bought=all.filter(i=>i.done),missing=all.filter(i=>!i.done);
+ const sum=l=>l.reduce((a,i)=>a+(i.price||0),0),missing=all.filter(i=>!i.done);
  const stat=(k,v,sub,cls)=>h('div',{class:'stat'+(cls?' '+cls:'')},h('span',{class:'stat-k'},k),h('strong',{class:'stat-v'},v),h('span',{class:'stat-s'},sub));
- return h('section',{class:'stats','aria-label':'Totais de '+c.name},
-  stat('Total geral estimado',brl.format(sum(all)),all.length+(all.length===1?' item':' itens'),'main'),
-  stat('Falta comprar',brl.format(sum(missing)),missing.length+(missing.length===1?' item':' itens')),
-  stat('Já comprado',brl.format(sum(bought)),bought.length+(bought.length===1?' item':' itens')))}
+ const stats=[stat('Total geral estimado',brl.format(sum(all)),all.length+(all.length===1?' item':' itens'),'main'),
+  stat('Falta comprar',brl.format(sum(missing)),missing.length+(missing.length===1?' item':' itens'))];
+ if(!c.box)return h('section',{class:'stats','aria-label':'Totais de '+c.name},stats);
+ const deps=S.wishlist.deposits.filter(d=>d.cat===c.id),saved=deps.reduce((a,d)=>a+d.amount,0);
+ const boxed=missing.filter(i=>i.box!==false),pending=sum(boxed);
+ stats.push(stat('Na caixinha',brl.format(saved),pending?pct(Math.min(saved,pending),pending)+'% do que a caixinha cobre':'nenhum item pendente na caixinha'));
+ const list=[...deps].sort((x,y)=>y.date.localeCompare(x.date));
+ return h('div',{style:'display:flex;flex-direction:column;gap:var(--space-4)'},
+  h('section',{class:'stats','aria-label':'Totais de '+c.name},stats),
+  h('section',{class:'card','aria-label':'Caixinha de '+c.name},
+   h('div',{class:'row',style:'justify-content:space-between'},h('h3',null,'Caixinha · '+c.name),h('button',{type:'button',class:'btn btn-primary btn-sm',onclick:()=>depositModal(c)},'+ Adicionar dinheiro')),
+   prog(Math.min(saved,pending),pending),
+   h('p',{class:'muted',style:'margin:0'},!pending?'Nenhum item pendente usa a caixinha. Ative a opção ao criar ou editar um desejo.':saved>=pending?'Você já juntou o suficiente para os '+boxed.length+(boxed.length===1?' item':' itens')+' da caixinha.':'Faltam '+brl.format(pending-saved)+' para cobrir '+boxed.length+(boxed.length===1?' item':' itens')+' da caixinha ('+brl.format(pending)+').'),
+   list.length?h('div',{class:'dep-list'},list.map(d=>h('div',{class:'li'},h('span',{class:'t'},fmt({day:'numeric',month:'short',year:'numeric'}).format(parse(d.date))+' · ',h('strong',null,brl.format(d.amount)),d.note?' · '+d.note:''),
+    h('span',{class:'acts'},xbtn('Remover depósito de '+brl.format(d.amount),()=>{S.wishlist.deposits=S.wishlist.deposits.filter(x=>x.id!==d.id);save('wishlist');rerender()}))))):h('p',{class:'empty'},'Nenhum valor adicionado ainda.')))}
 function viewWishlists(){
  const W=S.wishlist;if(wlFilter==='all'||!W.cats.some(c=>c.id===wlFilter))wlFilter=(W.cats[0]||{}).id||'all';
  const cname=id=>(W.cats.find(c=>c.id===id)||{name:'Sem categoria',tone:'neutral'});
@@ -444,7 +480,6 @@ function viewWishlists(){
  const cur=W.cats.find(c=>c.id===wlFilter);
  return h('div',{class:'page'},
   head('Lista de desejos',['Minhas ',h('em',null,'wishlists')],[h('button',{class:'btn btn-ghost',onclick:()=>catModal()},'+ Categoria'),h('button',{class:'btn btn-primary',onclick:()=>itemModal()},'+ Novo desejo')]),
-  seededMsg?h('p',{class:'callout',role:'status'},seededMsg):null,
   h('div',{class:'hd-row'},tabs(W.cats.map(c=>({id:c.id,name:c.name,count:count(c.id)})),wlFilter,'Categorias',(id,fid)=>{wlFilter=id;rerender(fid)}),
    cur?h('button',{class:'icon-btn','aria-label':'Editar categoria '+cur.name,onclick:()=>catModal(cur),html:ICONS.edit}):null),
   cur?catTotals(W.items.filter(i=>i.cat===cur.id),cur):null,
@@ -501,18 +536,51 @@ function goalNode(g){
 }
 
 /* ---------- Planner semanal ---------- */
-let weekStart=monday(new Date());
-const WD=['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
-function weekMinutes(ex){const s=iso(monday(new Date())),e=iso(addDays(monday(new Date()),6));return (ex?ex.log:S.study.exams.flatMap(x=>x.log)).filter(l=>l.date>=s&&l.date<=e).reduce((a,l)=>a+l.min,0)}
+let weekStart=sunday(new Date()),calOpen=false,calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);
+let calOff=null;
+function calStop(){if(calOff){const f=calOff;calOff=null;f()}}
+function calWatch(){
+ if(calOff||!calOpen)return;
+ const close=()=>{calOpen=false;calStop();rerender()};
+ const away=e=>{if(!e.target.closest('.cal-pop,[data-cal-btn]'))close()};
+ const esc=e=>{if(e.key==='Escape')close()};
+ document.addEventListener('mousedown',away,true);document.addEventListener('keydown',esc);
+ calOff=()=>{document.removeEventListener('mousedown',away,true);document.removeEventListener('keydown',esc)}}
+function calendarPanel(P){
+ const first=calMonth,start=sunday(first),ws=iso(weekStart),we=iso(addDays(weekStart,6)),t=todayIso();
+ const withTasks=new Set(P.tasks.map(x=>x.date));
+ const go=n=>{calMonth=new Date(first.getFullYear(),first.getMonth()+n,1);rerender()};
+ return h('section',{class:'card cal cal-pop',role:'dialog','aria-label':'Calendário'},
+  h('div',{class:'row',style:'justify-content:space-between;flex-wrap:nowrap'},
+   h('button',{type:'button',class:'icon-btn','aria-label':'Mês anterior',onclick:()=>go(-1),html:ICONS.chev,style:'transform:rotate(180deg)'}),
+   h('strong',{class:'cal-title'},fmt({month:'long',year:'numeric'}).format(first)),
+   h('button',{type:'button',class:'icon-btn','aria-label':'Próximo mês',onclick:()=>go(1),html:ICONS.chev})),
+  h('div',{class:'cal-grid'},
+   ['D','S','T','Q','Q','S','S'].map((w,i)=>h('span',{class:'cal-h','aria-hidden':'true'},w)),
+   Array.from({length:42},(_,i)=>addDays(start,i)).map(d=>{const k=iso(d),inWeek=k>=ws&&k<=we;
+    return h('button',{type:'button',class:'cal-d'+(d.getMonth()!==first.getMonth()?' out':'')+(k===t?' today':'')+(inWeek?' sel':''),'aria-pressed':String(inWeek),
+     'aria-label':fmt({weekday:'long',day:'numeric',month:'long'}).format(d)+(withTasks.has(k)?', com tarefas':''),
+     onclick:()=>{weekStart=sunday(d);calMonth=new Date(d.getFullYear(),d.getMonth(),1);calOpen=false;calStop();rerender()}},d.getDate(),withTasks.has(k)?h('i',{class:'cal-dot'}):null)})),
+  ws!==iso(sunday(new Date()))?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{weekStart=sunday(new Date());calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);calOpen=false;calStop();rerender()}},'Ir para esta semana'):null)}
+function moveTaskModal(t){
+ modal('Mudar data da tarefa',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
+  h('p',{style:'margin:0;overflow-wrap:anywhere'},t.text),
+  field('Nova data',h('input',{class:'inp',type:'date',name:'date',value:t.date}))),{
+  onSubmit(fd,fail){const v=String(fd.get('date')||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){fail('Escolha uma data.');return false}
+   t.date=v;weekStart=sunday(parse(v));save('planner');rerender()},submit:'Mudar data'})}
+const WD=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+function weekMinutes(ex){const s=iso(sunday(new Date())),e=iso(addDays(sunday(new Date()),6));return (ex?ex.log:S.study.exams.flatMap(x=>x.log)).filter(l=>l.date>=s&&l.date<=e).reduce((a,l)=>a+l.min,0)}
 function viewPlanner(){
- const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(monday(new Date()));
+ if(calOpen)setTimeout(calWatch,0);
+ const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(sunday(new Date()));
  const range=fmt({day:'numeric',month:'short'}).format(weekStart)+' – '+fmt({day:'numeric',month:'short',year:'numeric'}).format(we);
  const wkTasks=P.tasks.filter(t=>t.date>=ws&&t.date<=iso(we));
  return h('div',{class:'page'},
-  head(range,['Planner ',h('em',null,'semanal')],[
+  head(range,['Planner ',h('em',null,'semanal')],[h('div',{class:'cal-anchor'},
    h('button',{class:'btn btn-ghost','aria-label':'Semana anterior',onclick:()=>{weekStart=addDays(weekStart,-7);rerender()}},'‹'),
-   h('button',{class:'btn btn-ghost',disabled:isThis,onclick:()=>{weekStart=monday(new Date());rerender()}},'Esta semana'),
-   h('button',{class:'btn btn-ghost','aria-label':'Próxima semana',onclick:()=>{weekStart=addDays(weekStart,7);rerender()}},'›')]),
+   h('button',{class:'btn btn-ghost','data-cal-btn':true,'aria-expanded':String(calOpen),'aria-haspopup':'dialog',onclick:()=>{calOpen=!calOpen;calStop();calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);rerender()}},'Esta semana'),
+   h('button',{class:'btn btn-ghost','aria-label':'Próxima semana',onclick:()=>{weekStart=addDays(weekStart,7);rerender()}},'›'),
+   calOpen?calendarPanel(P):null)]),
   h('div',{class:'row',style:'align-items:flex-start;gap:var(--space-5)'},
    h('div',{class:'postit'},h('label',{for:'focus'},'Foco da semana'),h('textarea',{id:'focus',rows:3,placeholder:'O que mais importa nesta semana?',maxLength:200,oninput:e=>{P.focus[ws]=e.target.value;save('planner')}},P.focus[ws]||'')),
    h('div',{style:'flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;padding-top:8px'},h('span',{class:'muted',style:'font-weight:700'},'Tarefas feitas: '+wkTasks.filter(t=>t.done).length+' de '+wkTasks.length),prog(wkTasks.filter(t=>t.done).length,wkTasks.length))),
@@ -524,6 +592,7 @@ function viewPlanner(){
     ts.length?null:h('p',{class:'empty'},'Livre'),
     ts.map(t=>h('div',{class:'li'+(t.done?' done':'')},checkbox(t.done,'Concluir '+t.text,e=>{t.done=e.target.checked;save('planner');rerender()}),h('span',{class:'t'},t.text),
      h('span',{class:'acts'},
+      h('button',{class:'icon-btn','aria-label':'Mudar a data de '+t.text,onclick:()=>moveTaskModal(t),html:ICONS.planner}),
       h('button',{class:'icon-btn','aria-label':'Mover '+t.text+' para o dia seguinte',onclick:()=>{t.date=iso(addDays(d,1));save('planner');rerender()},html:ICONS.next}),
       xbtn('Remover '+t.text,()=>{P.tasks=P.tasks.filter(x=>x.id!==t.id);save('planner');rerender()})))),
     h('div',{class:'add'},h('input',{class:'inp',id:inpId,placeholder:'Nova tarefa',maxLength:140,autocomplete:'off','aria-label':'Adicionar tarefa em '+w+' '+d.getDate(),onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();add()}}}),h('button',{class:'btn btn-ghost','aria-label':'Adicionar',onclick:add},'+')))}))
@@ -547,8 +616,7 @@ function examCard(e){
    h('div',{class:'big'},left==null?'—':left<0?'Feito':left),
    h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data da prova':left<0?'prova já realizada':left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova'),
    prog(tDone,topics.length),
-   h('p',{class:'muted',style:'margin:0'},tDone+' de '+topics.length+' tópicos · '+e.subjects.length+(e.subjects.length===1?' matéria':' matérias')),
-   h('p',{class:'muted',style:'margin:0'},(Math.round(wk/6)/10)+' h de '+e.weeklyHours+' h nesta semana')))}
+   h('p',{class:'muted',style:'margin:0'},tDone+' de '+topics.length+' tópicos · '+e.subjects.length+(e.subjects.length===1?' matéria':' matérias'))))}
 function viewExamList(){
  return h('div',{class:'page'},
   head('Estudos para concurso',['Meus ',h('em',null,'concursos')]),
@@ -602,6 +670,7 @@ const VIEWS={inicio:viewInicio,wishlists:viewWishlists,objetivos:viewObjetivos,p
 function cur(){const k=location.hash.replace('#','');return VIEWS[k]?k:'inicio'}
 function route(keepScroll){
  if(!ME)return;
+ if(cur()!=='planner'){calOpen=false;calStop()}
  const k=cur(),main=$('#main'),y=main.scrollTop,wy=window.scrollY;
  for(const[id,sel]of[['nav','#nav'],['bottom','#bottom']]){const el=$(sel);el.textContent='';
   NAV.forEach(([r,l])=>el.append(h('a',{href:'#'+r,'aria-current':r===k?'page':null},ico(r),h('span',null,l))))}

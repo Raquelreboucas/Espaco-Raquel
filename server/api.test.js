@@ -98,9 +98,13 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
 
   const data = {
     wishlist: {
-      cats: [{ id: 'c1', name: 'Casa', tone: 'mint', note: 'n' }],
-      items: [{ id: 'i1', cat: 'c1', name: 'Geladeira', brand: 'X', room: 'Cozinha', price: 10.5, link: 'https://a.com', img: '', prio: 'alta', note: '', done: true }],
+      cats: [{ id: 'c1', name: 'Casa', tone: 'mint', note: 'n', box: true }, { id: 'c2', name: 'Moda', tone: 'pink', note: '', box: false }],
+      items: [
+        { id: 'i1', cat: 'c1', name: 'Geladeira', brand: 'X', room: 'Cozinha', price: 10.5, link: 'https://a.com', img: '', prio: 'alta', note: '', done: true, box: false },
+        { id: 'i2', cat: 'c1', name: 'Fogão', brand: '', room: '', price: null, link: '', img: '', prio: 'media', note: '', done: false, box: true },
+      ],
       seeds: ['s1'],
+      deposits: [{ id: 'd1', cat: 'c1', date: '2026-11-22', amount: 250.5, note: '13º' }],
     },
     goals: {
       areas: [{ id: 'a1', name: 'Estudos', tone: 'pink' }],
@@ -135,6 +139,9 @@ test('rejeita dados inválidos sem alterar o que já estava salvo', async () => 
   const { base, stop } = await start();
   const c = client(base);
   await signup(c);
+  const dep = (amount, cat = 'c1') => c.put('/api/state/wishlist', { cats: [{ id: 'c1', name: 'Casa', tone: 'mint' }], items: [], seeds: [], deposits: [{ id: 'd', cat, date: '2026-11-22', amount }] });
+  assert.equal((await dep(-5)).status, 400);
+  assert.equal((await dep(10, 'x')).status, 400);
   await c.put('/api/state/wishlist', { cats: [{ id: 'c1', name: 'Casa', tone: 'mint' }], items: [], seeds: [] });
   assert.equal((await c.put('/api/state/wishlist', { cats: [], items: [{ id: 'x', cat: 'nao-existe', name: 'a' }], seeds: [] })).status, 400);
   assert.equal((await c.put('/api/state/planner', { tasks: 'x', focus: {} })).status, 400);
