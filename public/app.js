@@ -812,7 +812,7 @@ function tjChartMat(){
   const st=tjStats(m.id),y=top+i*rowH,[cls,lab]=tjStatus(st.acc);
   s+='<text x="'+(labelW-10)+'" y="'+(y+rowH/2+4)+'" font-size="12.5" fill="var(--text)" text-anchor="end">'+tjEsc(tjShort(m))+'</text>';
   s+='<g data-goto="'+m.id+'" style="cursor:pointer"><title>'+tjEsc(m.nome+(st.f?' · '+st.a+' de '+st.f+' questões · '+tjPct(st.acc)+' · '+lab:' · nenhuma questão registrada'))+'</title><rect x="'+labelW+'" y="'+(y+2)+'" width="'+plotW+'" height="'+(rowH-4)+'" fill="transparent"/>';
-  if(st.acc!=null){const w=Math.max(st.acc*plotW,5),color=cls==='good'?'var(--tj-good)':cls==='warn'?'var(--tj-warn)':'var(--tj-bad)';
+  if(st.acc!=null){const w=Math.max(st.acc*plotW,5),color='var(--primary)';
    s+='<rect x="'+labelW+'" y="'+(y+8)+'" width="'+w+'" height="'+(rowH-16)+'" rx="4" fill="'+color+'"/><text x="'+(x(st.acc)+6)+'" y="'+(y+rowH/2+4)+'" font-size="12" font-weight="700" fill="var(--text)">'+tjPct(st.acc)+'</text>'}
   else s+='<text x="'+(labelW+4)+'" y="'+(y+rowH/2+4)+'" font-size="11.5" fill="var(--muted)">sem questões</text>';
   s+='</g>'});

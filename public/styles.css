@@ -337,7 +337,7 @@ body.is-auth .auth{display:grid;min-height:100vh;place-items:center;padding:var(
 .tj-rank-btn .ev{font-size:13px;color:var(--muted);text-align:right}
 .tj-rank-btn .ev b{color:var(--tj-bad)}
 .tj-rank-bar{position:absolute;left:44px;right:10px;bottom:5px;height:3px;border-radius:3px;background:var(--surface-2);overflow:hidden}
-.tj-rank-bar i{display:block;height:100%;background:var(--tj-bad);opacity:.7}
+.tj-rank-bar i{display:block;height:100%;background:var(--primary)}
 .tj-selos{display:flex;flex-wrap:wrap;gap:6px}
 .tj-selo{display:inline-flex;align-items:center;padding:3px 9px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:800;letter-spacing:.02em;line-height:1.2;border:1px solid transparent}
 .tj-selo.M{background:var(--warn-bg);color:var(--warn-text);border-color:#c08a1c52}
