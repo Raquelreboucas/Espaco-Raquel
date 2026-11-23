@@ -845,8 +845,8 @@ const tjLegend=rows=>h('ul',{class:'tj-legend'},rows.map(([cor,l,v])=>h('li',nul
 function tjPainel(){
  const T=tjT(),g=tjGeral();
  const stat=(k,v,sub,cls)=>h('div',{class:'stat'+(cls?' '+cls:'')},h('span',{class:'stat-k'},k),h('strong',{class:'stat-v'},v),h('span',{class:'stat-s'},sub));
- const stats=h('section',{class:'stats','aria-label':'Resumo'},
-  stat('Progresso no edital',Math.round(g.prog*100)+'%','ponderado pelo peso de cada matéria','main'),
+ const stats=h('section',{class:'stats tj-stats','aria-label':'Resumo'},
+  stat('Progresso no edital',Math.round(g.prog*100)+'%','ponderado pelo peso','main'),
   stat('Tópicos estudados',g.top+' / '+TJ_TOP,g.top?Math.round(g.top/TJ_TOP*100)+'% dos tópicos do edital':'nenhum marcado ainda'),
   stat('Questões feitas',g.f.toLocaleString('pt-BR'),g.f?g.a.toLocaleString('pt-BR')+' acertos · '+tjPct(g.a/g.f)+' sem ponderar':'nenhuma registrada ainda'),
   stat('Acerto ponderado',tjPct(g.accPond),g.accPond==null?'registre questões para calcular':'≈ '+Math.round(g.accPond*TJ.TOTAL_Q)+' de '+TJ.TOTAL_Q+' na prova'));
