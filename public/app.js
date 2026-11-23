@@ -860,7 +860,7 @@ function tjPainel(){
  const tops=grupos.filter(x=>x.e>0).sort(tjByErr).slice(0,10).map(x=>({...x,nome:tjTopicName(x.m,x.t)}));
  const totalE=mats.reduce((s,x)=>s+x.e,0);
  const erros=tjPanel('Onde você mais erra',totalE?totalE+' erros registrados no total · clique para abrir a matéria':'soma dos erros nas baterias registradas',
-  h('div',{class:'tj-grid2'},
+  h('div',{class:'tj-stack',style:'gap:var(--space-5)'},
    h('div',null,h('span',{class:'eyebrow'},'Erros por matéria'),mats.length?tjRank(mats,false):h('p',{class:'empty'},'Nenhum erro registrado ainda.')),
    h('div',null,h('span',{class:'eyebrow'},'Tópicos com mais erros no edital'),tops.length?tjRank(tops,true):h('p',{class:'empty'},'Escolha o tópico ao registrar cada bateria para ver aqui os 10 que mais derrubam você.'))));
 
