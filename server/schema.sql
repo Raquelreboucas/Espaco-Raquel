@@ -175,3 +175,28 @@ CREATE TABLE IF NOT EXISTS study_log (
   FOREIGN KEY (user_id, exam_id) REFERENCES study_exams(user_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_study_log_date ON study_log(user_id, date);
+
+-- ---------- Painel TJSP (edital completo, tópicos estudados e baterias de questões) ----------
+CREATE TABLE IF NOT EXISTS tjsp_topics (
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  topic_key   TEXT NOT NULL,                       -- ex.: "pen-0" (matéria-posição no edital)
+  studied_on  TEXT NOT NULL,
+  reviewed_on TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, topic_key)
+);
+CREATE TABLE IF NOT EXISTS tjsp_questions (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id       TEXT NOT NULL,
+  subject  TEXT NOT NULL,
+  topic    INTEGER,                                -- posição do tópico na matéria (vazio = vários tópicos)
+  date     TEXT NOT NULL,
+  total    INTEGER NOT NULL CHECK (total > 0),
+  hits     INTEGER NOT NULL CHECK (hits >= 0 AND hits <= total),
+  note     TEXT NOT NULL DEFAULT '',
+  position INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+CREATE TABLE IF NOT EXISTS tjsp_settings (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  goal    INTEGER NOT NULL DEFAULT 80 CHECK (goal BETWEEN 0 AND 100)
+);

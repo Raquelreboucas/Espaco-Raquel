@@ -93,7 +93,7 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
   const second = await signup(b, 'outra@exemplo.com');
   assert.equal(second.json.user.seed, false);
 
-  const nulls = { wishlist: null, goals: null, planner: null, study: null };
+  const nulls = { wishlist: null, goals: null, planner: null, study: null, tjsp: null };
   assert.deepEqual((await a.get('/api/state')).json.sections, nulls);
 
   const data = {
@@ -118,6 +118,12 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
           log: [{ id: 'l1', date: '2026-11-22', subject: 'Port', min: 60 }] },
         { id: 'inss', name: 'INSS', date: '', weeklyHours: 8, subjects: [], log: [] },
       ],
+    },
+    tjsp: {
+      topicos: { 'pen-0': '2026-11-20', 'pt-3': '2026-11-21' },
+      revisados: { 'pen-0': '2026-11-22' },
+      registros: [{ id: 'q1', m: 'pen', d: '2026-11-22', f: 20, a: 15, t: 0, n: 'Vunesp 2023' }, { id: 'q2', m: 'pt', d: '2026-11-22', f: 10, a: 4 }],
+      meta: 75,
     },
   };
   for (const [s, body] of Object.entries(data)) assert.equal((await a.put('/api/state/' + s, body)).status, 204);

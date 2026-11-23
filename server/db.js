@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const SECTIONS = ['wishlist', 'goals', 'planner', 'study'];
+export const SECTIONS = ['wishlist', 'goals', 'planner', 'study', 'tjsp'];
 
 export class ValidationError extends Error {}
 
@@ -140,6 +140,22 @@ function makeStore(client) {
         })),
       };
     },
+    async tjsp(u) {
+      const [topics, qs, cfg] = await Promise.all([
+        rows('SELECT * FROM tjsp_topics WHERE user_id = ?', [u]),
+        rows('SELECT * FROM tjsp_questions WHERE user_id = ? ORDER BY position', [u]),
+        one('SELECT goal FROM tjsp_settings WHERE user_id = ?', [u]),
+      ]);
+      return {
+        topicos: Object.fromEntries(topics.map((t) => [t.topic_key, t.studied_on])),
+        revisados: Object.fromEntries(topics.filter((t) => t.reviewed_on).map((t) => [t.topic_key, t.reviewed_on])),
+        registros: qs.map((q) => ({
+          id: q.id, m: q.subject, d: q.date, f: q.total, a: q.hits,
+          ...(q.topic != null ? { t: q.topic } : {}), ...(q.note ? { n: q.note } : {}),
+        })),
+        meta: cfg ? cfg.goal : 80,
+      };
+    },
   };
 
   /* ---------- escrita: cada função devolve a lista de comandos (apagar tudo + inserir) ---------- */
@@ -241,6 +257,31 @@ function makeStore(client) {
             [u, id(l.id, 'log'), eid, l.date, str(l.subject, 60), min, j]));
         });
       });
+      return out;
+    },
+    tjsp(u, d) {
+      const today = new Date().toISOString().slice(0, 10);
+      const out = [
+        st('DELETE FROM tjsp_topics WHERE user_id = ?', [u]),
+        st('DELETE FROM tjsp_questions WHERE user_id = ?', [u]),
+        st('DELETE FROM tjsp_settings WHERE user_id = ?', [u]),
+      ];
+      const topicos = d.topicos && typeof d.topicos === 'object' ? d.topicos : {};
+      const revisados = d.revisados && typeof d.revisados === 'object' ? d.revisados : {};
+      for (const [k, v] of Object.entries(topicos).slice(0, 500)) {
+        if (!/^[a-z]{1,8}-\d{1,3}$/.test(k) || !v) continue;
+        const rv = revisados[k];
+        out.push(st('INSERT INTO tjsp_topics(user_id, topic_key, studied_on, reviewed_on) VALUES (?,?,?,?)',
+          [u, k, ISO_DAY.test(v) ? v : today, rv ? (ISO_DAY.test(rv) ? rv : today) : '']));
+      }
+      arr(d.registros ?? [], 'registros').slice(0, 20000).forEach((r, i) => {
+        const f = Math.trunc(Number(r.f)), a = Math.trunc(Number(r.a));
+        if (!(f > 0 && f <= 100000) || !(a >= 0 && a <= f) || !ISO_DAY.test(r.d) || !/^[a-z]{1,8}$/.test(String(r.m))) throw new ValidationError('Bateria de questões inválida.');
+        const t = r.t == null || r.t === '' ? null : Math.trunc(Number(r.t));
+        out.push(st('INSERT INTO tjsp_questions(user_id, id, subject, topic, date, total, hits, note, position) VALUES (?,?,?,?,?,?,?,?,?)',
+          [u, id(r.id, 'registros'), r.m, Number.isInteger(t) && t >= 0 && t < 1000 ? t : null, r.d, f, a, str(r.n, 200), i]));
+      });
+      out.push(st('INSERT INTO tjsp_settings(user_id, goal) VALUES (?,?)', [u, Math.min(100, Math.max(0, Math.round(Number(d.meta)) || 0))]));
       return out;
     },
   };
