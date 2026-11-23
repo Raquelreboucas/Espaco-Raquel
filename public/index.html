@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&family=Caveat:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
 </head>
 <body>
 <div class="app">
@@ -15,12 +16,14 @@
     <div class="brand">Meu espaço pessoal</div>
     <nav class="nav" id="nav" aria-label="Principal"></nav>
     <div class="who" id="who"></div>
+    <div id="theme"></div>
     <a class="backup" href="/api/export" download="meu-espaco-backup.json">Baixar backup (.json)</a>
     <button type="button" class="backup" id="logout">Sair</button>
     <div class="sync" id="sync"><span class="dot off"></span><span>Carregando…</span></div>
   </aside>
   <main id="main" tabindex="-1"></main>
 </div>
+<div id="themeFab"></div>
 <div id="auth" class="auth"></div>
 <nav class="bottom" id="bottom" aria-label="Principal"></nav>
 <script src="tjsp-data.js"></script>

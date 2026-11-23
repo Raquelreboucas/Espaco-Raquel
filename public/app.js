@@ -25,6 +25,8 @@ const ICONS={
  planner:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  concurso:'<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 21V5M9 8h6M9 12h6"/></svg>',
  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+ sun:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+ moon:'<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"/></svg>',
  link:'<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>',
  trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
  edit:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
@@ -995,6 +997,16 @@ function route(keepScroll){
  if(refocus){const e=document.getElementById(refocus);refocus=null;if(e)e.focus()}
 }
 window.addEventListener('hashchange',()=>route());
+/* ---------- tema claro/escuro ---------- */
+const themeNow=()=>document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
+function setTheme(t){document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem('meu-espaco-tema',t)}catch(e){}drawTheme()}
+function drawTheme(){
+ const dark=themeNow()==='dark';
+ for(const id of['theme','themeFab']){const el=document.getElementById(id);if(!el)continue;
+  el.replaceChildren(h('button',{type:'button',class:id==='theme'?'backup theme-btn':'theme-fab','aria-label':dark?'Mudar para o modo claro':'Mudar para o modo escuro',title:dark?'Modo claro':'Modo escuro',onclick:()=>setTheme(dark?'light':'dark')},
+   h('span',{class:'theme-ic',html:dark?ICONS.sun:ICONS.moon,'aria-hidden':'true'}),id==='theme'?(dark?'Modo claro':'Modo escuro'):null))}}
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',drawTheme);
+drawTheme();
 setMode(mode);
 init();
 
