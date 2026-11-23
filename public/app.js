@@ -321,10 +321,20 @@ function migrateBox(W){
  if(W.seeds.includes('box-1'))return;
  for(const c of W.cats)if(['casa','tecnologia'].includes(c.name.trim().toLowerCase()))c.box=true;
  W.seeds.push('box-1');save('wishlist')}
+function migrateModa(W){
+ if(W.seeds.includes('moda-1'))return;
+ const cat=W.cats.find(c=>c.name.trim().toLowerCase()==='moda');if(!cat)return;
+ for(const[name,brand,link]of[
+  ['Bolsa Kiara média couro croco cabernet','Look My Bag','https://www.lookmybag.com.br/kiara-media-couro-croco-cabernet-kiamcrocab'],
+  ['Bolsa feminina couro textura croco rosa','Jorge Bischoff','https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Couro-Textura-Croco-Rosa-15369052.html'],
+  ['Bolsa feminina detalhe metálico dourado branca','Jorge Bischoff','https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Detalhe-Metalico-Dourado-Branca-15029204.html'],
+  ['Óculos de sol cat eye marrom','Ray-Ban','https://www.dafiti.com.br/Oculos-de-Sol-Ray-Ban-Cat-Eye-Marrom-15414463.html']])
+  W.items.push({id:uid(),cat:cat.id,name,brand,room:'',price:null,link,img:'',prio:'media',note:'',done:false,box:true});
+ W.seeds.push('moda-1');save('wishlist')}
 function applyMigrations(){
  migrateStudy();migrateFocus();
  const W=S.wishlist;if(!isArr(W.cats))W.cats=defaults().wishlist.cats;if(!isArr(W.items))W.items=[];if(!isArr(W.seeds))W.seeds=[];if(!isArr(W.deposits))W.deposits=[];
- migrateCats(W);migrateBox(W);
+ migrateCats(W);migrateBox(W);migrateModa(W);
  if(W.seeds.includes(SEED_ID)||!canSeed)return false;
  let cat=W.cats.find(c=>c.name.trim().toLowerCase()==='casa');
  if(!cat){cat={id:uid(),name:'Casa',tone:'mint'};W.cats.unshift(cat)}
