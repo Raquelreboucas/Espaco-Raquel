@@ -508,14 +508,11 @@ function delItem(i){
  modal('Excluir desejo?',()=>h('p',{style:'margin:0'},'“'+i.name+'” será removido da lista.'),{submit:'Excluir',onSubmit:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==i.id);save('wishlist');rerender()}})}
 function wlCards(items,cname){
  const rooms=[];items.forEach(i=>{const r=i.room||'Sem subcategoria';if(!rooms.includes(r))rooms.push(r)});
- const total=items.reduce((a,i)=>a+(i.price||0),0);
  return h('div',{style:'display:flex;flex-direction:column;gap:var(--space-6)'},
   rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem subcategoria')===r);
    return h('section',{'aria-label':r,style:'display:flex;flex-direction:column;gap:var(--space-3)'},
     h('div',{class:'row'},h('h2',{style:'margin:0;font-size:20px'},r),h('span',{class:'badge'},g.length+(g.length===1?' item':' itens')),h('span',{class:'badge'},'Subtotal '+brl.format(g.reduce((a,i)=>a+(i.price||0),0)))),
-    h('div',{class:'grid grid-sm'},g.map(i=>wlCard(i,cname))))}),
-  h('div',{class:'grid'},h('button',{class:'new',onclick:()=>itemModal()},'+ Novo desejo')),
-  items.length?h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total))):null)}
+    h('div',{class:'grid grid-sm'},g.map(i=>wlCard(i,cname))))}))}
 function depositModal(c){
  modal('Adicionar à caixinha',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
   field('Valor (R$)',h('input',{class:'inp',name:'amount',placeholder:'0,00',autocomplete:'off',inputmode:'decimal'})),
