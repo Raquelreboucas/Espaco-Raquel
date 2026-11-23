@@ -286,3 +286,10 @@ body.is-auth .auth{display:grid;min-height:100vh;place-items:center;padding:var(
 .grid-sm .tile-body{padding:var(--space-3);gap:6px}
 .grid-sm .tile-title{font-size:17px}
 .grid-sm .tile-foot{padding:0 var(--space-2) var(--space-2) var(--space-3)}
+
+.adj{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-card);background:var(--surface-2)}
+.adj-frame{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:var(--radius-md);cursor:grab;touch-action:none;user-select:none}
+.adj-frame:active{cursor:grabbing}
+.adj-frame img{position:absolute;max-width:none;pointer-events:none}
+.adj-row{display:grid;grid-template-columns:90px 1fr;align-items:center;gap:var(--space-3);font-size:14px;font-weight:600}
+.adj-row input{width:100%;accent-color:var(--primary)}

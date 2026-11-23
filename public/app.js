@@ -231,15 +231,39 @@ function shrinkUrl(src,max=480){return new Promise((res,rej)=>{const im=new Imag
 async function fetchLinkImage(url){
  const r=await api('/api/link-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
  return shrinkUrl(r.image)}
+function adjustPhoto(src,done,cancel){
+ const im=new Image(),st={z:1,x:50,y:50};
+ const frame=h('div',{class:'adj-frame'}),pic=h('img',{alt:'Prévia da foto',draggable:'false'});frame.append(pic);
+ const geo=()=>{const W=frame.clientWidth||320,H=W*3/4,s=Math.max(W/im.naturalWidth,H/im.naturalHeight)*st.z,w=im.naturalWidth*s,hh=im.naturalHeight*s;
+  return{W,H,w,h:hh,l:w<=W?(W-w)/2:-(w-W)*st.x/100,t:hh<=H?(H-hh)/2:-(hh-H)*st.y/100}};
+ const draw=()=>{if(!im.naturalWidth)return;const g=geo();Object.assign(pic.style,{width:g.w+'px',height:g.h+'px',left:g.l+'px',top:g.t+'px'})};
+ const sl=(label,key,min,max,step)=>{const inp=h('input',{type:'range',min:String(min),max:String(max),step:String(step),value:String(st[key]),'aria-label':label,oninput:()=>{st[key]=+inp.value;draw()}});
+  return h('label',{class:'adj-row'},h('span',null,label),inp)};
+ const sZ=sl('Zoom','z',0.5,3,0.05),sX=sl('Horizontal','x',0,100,1),sY=sl('Vertical','y',0,100,1);
+ const sync=()=>{sZ.querySelector('input').value=st.z;sX.querySelector('input').value=st.x;sY.querySelector('input').value=st.y};
+ let drag=null;
+ frame.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,px:st.x,py:st.y};frame.setPointerCapture(e.pointerId)});
+ frame.addEventListener('pointermove',e=>{if(!drag)return;const g=geo();
+  if(g.w>g.W)st.x=Math.min(100,Math.max(0,drag.px-(e.clientX-drag.x)/(g.w-g.W)*100));
+  if(g.h>g.H)st.y=Math.min(100,Math.max(0,drag.py-(e.clientY-drag.y)/(g.h-g.H)*100));sync();draw()});
+ frame.addEventListener('pointerup',()=>{drag=null});
+ const apply=()=>{const g=geo(),f=640/g.W,c=document.createElement('canvas');c.width=640;c.height=480;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,640,480);x.drawImage(im,g.l*f,g.t*f,g.w*f,g.h*f);done(c.toDataURL('image/jpeg',0.85))};
+ im.onload=()=>{pic.src=src;draw()};im.src=src;pic.src=src;
+ const box=h('div',{class:'adj'},h('p',{class:'ds-hint',style:'margin:0'},'Arraste a foto ou use os controles. O recorte tem o formato do card (4:3).'),frame,sZ,sX,sY,
+  h('div',{class:'row'},h('button',{type:'button',class:'btn btn-primary btn-sm',onclick:apply},'Aplicar'),h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:cancel},'Cancelar')));
+ setTimeout(draw,0);return box}
 function uploadField(label,state,alt,fail){
  const thumb=h('div',{class:'ds-upload-thumb'}),file=h('input',{type:'file',accept:'image/*',style:'display:none','aria-label':label}),
   pick=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>file.click()}),
-  rm=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{state.img='';draw()}},'Remover foto');
+  rm=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{state.img='';draw()}},'Remover foto'),
+  adj=h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{ed.replaceChildren(adjustPhoto(state.img,v=>{state.img=v;ed.replaceChildren();draw()},()=>ed.replaceChildren()))}},'Ajustar foto'),
+  ed=h('div');
  const draw=()=>{thumb.replaceChildren();if(state.img)thumb.append(h('img',{src:state.img,alt:alt||'Foto do item'}));else thumb.append('▢');
-  pick.textContent=state.img?'Trocar foto':'Escolher foto';rm.style.display=state.img?'':'none'};
+  pick.textContent=state.img?'Trocar foto':'Escolher foto';rm.style.display=state.img?'':'none';adj.style.display=state.img?'':'none'};
  file.addEventListener('change',async()=>{const f=file.files[0];if(!f)return;try{state.img=await shrink(f)}catch(e){fail&&fail(e.message)}draw()});
  draw();state.redraw=draw;
- return h('div',{class:'ds-field'},h('span',{class:'ds-label',style:'font-size:14px;font-weight:600'},label),h('div',{class:'ds-upload'},thumb,h('div',{class:'row'},pick,rm,file),),h('span',{class:'ds-hint'},'JPG ou PNG. A foto é reduzida antes de salvar.'))}
+ return h('div',{class:'ds-field'},h('span',{class:'ds-label',style:'font-size:14px;font-weight:600'},label),h('div',{class:'ds-upload'},thumb,h('div',{class:'row'},pick,adj,rm,file),),ed,h('span',{class:'ds-hint'},'JPG ou PNG. A foto é reduzida antes de salvar.'))}
 
 /* ---------- helpers de UI ---------- */
 const prog=(v,t)=>h('div',{class:'prog-row'},h('div',{class:'prog',role:'progressbar','aria-valuemin':'0','aria-valuemax':'100','aria-valuenow':String(pct(v,t))},h('i',{style:'width:'+pct(v,t)+'%'})),h('span',null,pct(v,t)+'%'));
