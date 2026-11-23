@@ -377,3 +377,9 @@ body.is-auth .theme-fab{display:none}
 .tj-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
 .tj-stats .stat-v{font-size:clamp(24px,2.6vw,30px)}
 @media (max-width:700px){.tj-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tj-config{padding:var(--space-3) var(--space-4)}
+.tj-config-row{display:flex;flex-wrap:wrap;gap:var(--space-3) var(--space-4);align-items:flex-end}
+.tj-config .field{gap:4px;width:180px;max-width:100%}
+.tj-config .field:last-child{width:130px}
+.tj-config label{font-size:13px}
+.tj-config .inp{min-height:36px;padding:0 var(--space-3);font-size:14px}

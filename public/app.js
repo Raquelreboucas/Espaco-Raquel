@@ -975,7 +975,7 @@ function viewTjsp(X){
   h('div',{class:'row'},
    h('span',{class:'badge'},left==null?'Sem data da prova':left<0?'Prova já realizada':left===0?'A prova é hoje':left+(left===1?' dia':' dias')+' para a prova'),
    h('span',{class:'badge'},g.top+' de '+TJ_TOP+' tópicos estudados')),
-  h('div',{class:'card'},h('div',{class:'form-grid'},
+  h('div',{class:'card tj-config'},h('div',{class:'tj-config-row'},
    field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
    field('Meta de acerto (%)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(T.meta),onchange:e=>{T.meta=Math.min(100,Math.max(0,parseInt(e.target.value,10)||0));save('tjsp');rerender()}})))),
   tabs(items,tjTab,'Painel e matérias do TJSP',(id,fid)=>{tjTab=id;tjFilter='';rerender(fid);goTop()}),
