@@ -25,6 +25,7 @@ const ICONS={
  planner:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
  concurso:'<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z"/><path d="M4 21V5M9 8h6M9 12h6"/></svg>',
  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+ link:'<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>',
  trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
  edit:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
  chev:'<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
@@ -380,7 +381,15 @@ function itemModal(it){
  const cats=S.wishlist.cats;if(!cats.length){modal('Sem categorias',()=>h('p',null,'Crie uma categoria antes de adicionar desejos.'),{onSubmit:()=>true,submit:'Ok'});return}
  const isNew=!it;it=it||{id:uid(),cat:wlFilter!=='all'?wlFilter:cats[0].id,name:'',brand:'',room:'',price:null,link:'',img:'',prio:'media',note:'',done:false};
  const st={img:it.img||''};
- const rooms=[...new Set(S.wishlist.items.map(i=>i.room).filter(Boolean))];
+ let curCat=it.cat,subVal=it.room||'';
+ const subsOf=c=>[...new Set(S.wishlist.items.filter(i=>i.cat===c).map(i=>i.room).filter(Boolean))];
+ const newSub=h('input',{class:'inp',name:'room_new',placeholder:'Nome da nova subcategoria',maxLength:60,autocomplete:'off'});
+ const subHost=h('div',{style:'display:flex;flex-direction:column;gap:8px;min-width:0'});
+ const drawSub=()=>{const subs=subsOf(curCat);if(subVal&&subVal!=='__new'&&!subs.includes(subVal))subs.push(subVal);
+  newSub.hidden=subVal!=='__new';
+  subHost.replaceChildren(field('Subcategoria',dropdown({name:'room',value:subVal,label:'Subcategoria',options:[['','Sem subcategoria'],...subs.map(x=>[x,x]),['__new','+ Nova subcategoria…']],
+   onchange:v=>{subVal=v;newSub.hidden=v!=='__new';if(v==='__new')newSub.focus()}})),newSub)};
+ drawSub();
  const catHasBox=id=>!!(cats.find(c=>c.id===id)||{}).box;
  const boxWrap=h('div',null,h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'box',value:'sim',checked:it.box!==false}),'Usar a caixinha para este desejo'));
  boxWrap.hidden=!catHasBox(it.cat);
@@ -396,12 +405,11 @@ function itemModal(it){
   field('Item',h('input',{class:'inp',name:'name',value:it.name,placeholder:'Ex.: Luminária de mesa',maxLength:120,autocomplete:'off'})),
   field('Marca/modelo',h('input',{class:'inp',name:'brand',value:it.brand||'',maxLength:140,autocomplete:'off'})),
   h('div',{class:'form-grid'},
-   field('Cômodo',h('input',{class:'inp',name:'room',value:it.room||'',maxLength:60,autocomplete:'off',list:'rooms'})),
+   subHost,
    field('Preço estimado (R$)',h('input',{class:'inp',name:'price',value:it.price==null?'':String(it.price).replace('.',','),placeholder:'0,00',autocomplete:'off'})),
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;align-self:flex-end;min-height:44px;cursor:pointer'},h('input',{type:'checkbox',class:'check',name:'done',value:'sim',checked:it.done}),'Comprei?')),
-  h('datalist',{id:'rooms'},rooms.map(r=>h('option',{value:r}))),
   h('div',{class:'form-grid'},
-   field('Categoria',dropdown({name:'cat',value:it.cat,label:'Categoria',options:cats.map(c=>[c.id,c.name]),onchange:v=>{boxWrap.hidden=!catHasBox(v)}})),
+   field('Categoria',dropdown({name:'cat',value:it.cat,label:'Categoria',options:cats.map(c=>[c.id,c.name]),onchange:v=>{boxWrap.hidden=!catHasBox(v);curCat=v;subVal='';drawSub()}})),
    field('Prioridade',dropdown({name:'prio',value:it.prio,label:'Prioridade',options:[['alta','Alta'],['media','Média'],['baixa','Baixa']]}))),
   boxWrap,
   field('Link do produto',h('input',{class:'inp',name:'link',value:it.link,placeholder:'https://',autocomplete:'off'})),
@@ -411,7 +419,7 @@ function itemModal(it){
   onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome do item.');return false}
    const price=toNum(fd.get('price'));if(Number.isNaN(price)){fail('Preço inválido. Use números, como 129,90.');return false}
    const raw=String(fd.get('link')).trim(),link=normUrl(raw);if(raw&&!link){fail('Link inválido. Cole o endereço completo da loja.');return false}
-   Object.assign(it,{name,brand:String(fd.get('brand')).trim(),room:String(fd.get('room')).trim(),cat:fd.get('cat'),prio:fd.get('prio'),price,link,img:st.img,note:String(fd.get('note')).trim(),done:fd.get('done')==='sim',box:catHasBox(fd.get('cat'))?fd.get('box')==='sim':true});
+   Object.assign(it,{name,brand:String(fd.get('brand')).trim(),room:(fd.get('room')==='__new'?String(fd.get('room_new')||''):String(fd.get('room')||'')).trim().slice(0,60),cat:fd.get('cat'),prio:fd.get('prio'),price,link,img:st.img,note:String(fd.get('note')).trim(),done:fd.get('done')==='sim',box:catHasBox(fd.get('cat'))?fd.get('box')==='sim':true});
    if(isNew)S.wishlist.items.push(it);save('wishlist');rerender()},
   onDelete:isNew?null:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==it.id);save('wishlist');rerender()},
   submit:isNew?'Adicionar':'Salvar'});
@@ -430,22 +438,22 @@ function catModal(c){
 const PRIO={alta:['Alta','peach'],media:['Média','warn'],baixa:['Baixa','']};
 const num=new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 function wlTable(items){
- const rooms=[];items.forEach(i=>{const r=i.room||'Sem cômodo';if(!rooms.includes(r))rooms.push(r)});
- const rows=[...items].sort((a,b)=>rooms.indexOf(a.room||'Sem cômodo')-rooms.indexOf(b.room||'Sem cômodo'));
+ const rooms=[];items.forEach(i=>{const r=i.room||'Sem subcategoria';if(!rooms.includes(r))rooms.push(r)});
+ const rows=[...items].sort((a,b)=>rooms.indexOf(a.room||'Sem subcategoria')-rooms.indexOf(b.room||'Sem subcategoria'));
  const total=items.reduce((a,i)=>a+(i.price||0),0),missing=items.filter(i=>!i.done).reduce((a,i)=>a+(i.price||0),0);
  const th=(t,c)=>h('th',{scope:'col',class:c||''},t);
  return h('div',{style:'display:flex;flex-direction:column;gap:var(--space-5)'},
   h('div',{class:'tbl-wrap',tabindex:'0',role:'region','aria-label':'Tabela de itens'},h('table',{class:'tbl'},
-   h('thead',null,h('tr',null,th('Item'),th('Marca/modelo'),th('Cômodo'),th('Preço estimado (R$)','num'),th('Comprei?'),h('th',{scope:'col'},h('span',{class:'sr'},'Ações')))),
+   h('thead',null,h('tr',null,th('Item'),th('Marca/modelo'),th('Subcategoria'),th('Preço estimado (R$)','num'),th('Comprei?'),h('th',{scope:'col'},h('span',{class:'sr'},'Ações')))),
    h('tbody',null,rows.map(i=>h('tr',{class:i.done?'done':''},
     h('td',{style:'font-weight:700'},i.img?h('img',{class:'thumb',src:i.img,alt:''}):null,i.name,i.link?[' ',h('a',{href:i.link,target:'_blank',rel:'noopener noreferrer',style:'font-weight:600;font-size:13px','aria-label':'Abrir '+i.name+' na loja'},'Loja')]:null),h('td',null,i.brand||'—'),h('td',null,i.room||'—'),
     h('td',{class:'num'},i.price!=null?num.format(i.price):'—'),
     h('td',null,checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()})),
     h('td',null,h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit}))))))),
   h('div',{class:'tbl-wrap',style:'max-width:560px'},h('table',{class:'tbl',style:'min-width:0'},
-   h('caption',{class:'sr'},'Subtotal por cômodo'),
-   h('thead',null,h('tr',null,th('Cômodo'),th('Itens','num'),th('Subtotal (R$)','num'))),
-   h('tbody',null,rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem cômodo')===r);return h('tr',null,h('td',null,r),h('td',{class:'num'},g.length),h('td',{class:'num'},num.format(g.reduce((a,i)=>a+(i.price||0),0))))})),
+   h('caption',{class:'sr'},'Subtotal por subcategoria'),
+   h('thead',null,h('tr',null,th('Subcategoria'),th('Itens','num'),th('Subtotal (R$)','num'))),
+   h('tbody',null,rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem subcategoria')===r);return h('tr',null,h('td',null,r),h('td',{class:'num'},g.length),h('td',{class:'num'},num.format(g.reduce((a,i)=>a+(i.price||0),0))))})),
    h('tfoot',null,h('tr',null,h('td',null,'Total geral'),h('td',{class:'num'},items.length),h('td',{class:'num'},num.format(total)))))),
   h('div',{class:'row'},h('span',{class:'badge'},'Total geral: '+brl.format(total)),h('span',{class:'badge peach'},'Falta comprar: '+brl.format(missing))));
 }
@@ -477,15 +485,16 @@ function wlCard(i,cname){
  const c=cname(i.cat),[pl,pc]=PRIO[i.prio]||PRIO.media;
  const fl=(k,v)=>h('div',{style:'display:flex;flex-direction:column;gap:2px;min-width:0'},h('span',{class:'muted',style:'font-size:12px;font-weight:700'},k),v);
  return h('article',{class:'tile tone-'+c.tone+(i.done?' tile-done':'')},
-  h('div',{class:'tile-top'},h('span',null,i.room||'Sem cômodo'),h('span',null,c.name)),
-  i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):h('div',{class:'tile-ph',html:phArt(i.name+' '+(i.brand||'')),'aria-hidden':'true'}),
+  h('div',{class:'tile-media'},
+   i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):h('div',{class:'tile-ph',html:phArt(i.name+' '+(i.brand||'')),'aria-hidden':'true'}),
+   h('div',{class:'tile-badges'},h('span',{class:'badge badge-cat'},c.name),i.room?h('span',{class:'badge badge-sub'},i.room):null)),
   h('div',{class:'tile-body'},
    fl('Item',h('h3',{class:'tile-title',style:'margin:0'},i.name)),
    fl('Marca/modelo',h('span',{style:'overflow-wrap:anywhere'},i.brand||'—')),
    fl('Preço estimado (R$)',h('strong',null,i.price!=null?num.format(i.price):'—')),
    h('div',{class:'row'},h('span',{class:'badge '+pc},'Prioridade '+pl.toLowerCase())),
    i.note?h('p',{class:'muted',style:'margin:0;overflow-wrap:anywhere'},i.note):null,
-   i.link?h('a',{class:'btn btn-ghost btn-sm',href:i.link,target:'_blank',rel:'noopener noreferrer',style:'align-self:flex-start'},'Abrir produto'):h('button',{type:'button',class:'btn btn-ghost btn-sm',style:'align-self:flex-start',onclick:()=>linkModal(i)},'+ Adicionar link')),
+   i.link?h('a',{class:'link-ico',href:i.link,target:'_blank',rel:'noopener noreferrer'},h('span',{html:ICONS.link,'aria-hidden':'true'}),'Abrir produto'):h('button',{type:'button',class:'btn btn-ghost btn-sm',style:'align-self:flex-start',onclick:()=>linkModal(i)},'+ Adicionar link')),
   h('div',{class:'tile-foot'},
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},
     checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()}),'Comprei?'),
@@ -498,10 +507,10 @@ function linkModal(i){
 function delItem(i){
  modal('Excluir desejo?',()=>h('p',{style:'margin:0'},'“'+i.name+'” será removido da lista.'),{submit:'Excluir',onSubmit:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==i.id);save('wishlist');rerender()}})}
 function wlCards(items,cname){
- const rooms=[];items.forEach(i=>{const r=i.room||'Sem cômodo';if(!rooms.includes(r))rooms.push(r)});
+ const rooms=[];items.forEach(i=>{const r=i.room||'Sem subcategoria';if(!rooms.includes(r))rooms.push(r)});
  const total=items.reduce((a,i)=>a+(i.price||0),0);
  return h('div',{style:'display:flex;flex-direction:column;gap:var(--space-6)'},
-  rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem cômodo')===r);
+  rooms.map(r=>{const g=items.filter(i=>(i.room||'Sem subcategoria')===r);
    return h('section',{'aria-label':r,style:'display:flex;flex-direction:column;gap:var(--space-3)'},
     h('div',{class:'row'},h('h2',{style:'margin:0;font-size:20px'},r),h('span',{class:'badge'},g.length+(g.length===1?' item':' itens')),h('span',{class:'badge'},'Subtotal '+brl.format(g.reduce((a,i)=>a+(i.price||0),0)))),
     h('div',{class:'grid grid-sm'},g.map(i=>wlCard(i,cname))))}),
