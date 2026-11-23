@@ -322,15 +322,20 @@ function migrateBox(W){
  for(const c of W.cats)if(['casa','tecnologia'].includes(c.name.trim().toLowerCase()))c.box=true;
  W.seeds.push('box-1');save('wishlist')}
 function migrateModa(W){
- if(W.seeds.includes('moda-1'))return;
+ if(W.seeds.includes('moda-3'))return;
  const cat=W.cats.find(c=>c.name.trim().toLowerCase()==='moda');if(!cat)return;
- for(const[name,brand,link]of[
-  ['Bolsa Kiara média couro croco cabernet','Look My Bag','https://www.lookmybag.com.br/kiara-media-couro-croco-cabernet-kiamcrocab'],
-  ['Bolsa feminina couro textura croco rosa','Jorge Bischoff','https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Couro-Textura-Croco-Rosa-15369052.html'],
-  ['Bolsa feminina detalhe metálico dourado branca','Jorge Bischoff','https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Detalhe-Metalico-Dourado-Branca-15029204.html'],
-  ['Óculos de sol cat eye marrom','Ray-Ban','https://www.dafiti.com.br/Oculos-de-Sol-Ray-Ban-Cat-Eye-Marrom-15414463.html']])
-  W.items.push({id:uid(),cat:cat.id,name,brand,room:'',price:null,link,img:'',prio:'media',note:'',done:false,box:true});
- W.seeds.push('moda-1');save('wishlist')}
+ const novos=[
+  ['Bolsa Kiara média couro croco cabernet','Look My Bag',799.92,'https://www.lookmybag.com.br/kiara-media-couro-croco-cabernet-kiamcrocab','/img/moda-1.png'],
+  ['Bolsa feminina couro textura croco rosa','Jorge Bischoff',418.99,'https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Couro-Textura-Croco-Rosa-15369052.html','/img/moda-2.jpg'],
+  ['Bolsa feminina detalhe metálico dourado branca','Jorge Bischoff',499.99,'https://www.dafiti.com.br/Bolsa-Feminina-Jorge-Bischoff-Detalhe-Metalico-Dourado-Branca-15029204.html','/img/moda-3.jpg'],
+  ['Óculos de sol cat eye marrom','Ray-Ban',677.99,'https://www.dafiti.com.br/Oculos-de-Sol-Ray-Ban-Cat-Eye-Marrom-15414463.html','/img/moda-4.jpg'],
+  ['Bolsa de ombro média couro antique azul corrente dourada','Corello',469.9,'https://www.corello.com.br/produto/bolsa-de-ombro-media-couro-antique-azul-corrente-frontal-dourada-159002','/img/moda-5.jpg']];
+ for(const[name,brand,price,link,img]of novos){
+  let it=W.items.find(i=>i.link===link);
+  if(it){if(it.price==null)it.price=price;if(!it.img)it.img=img}
+  else{it={id:uid(),cat:cat.id,name,brand,room:'',price,link,img,prio:'media',note:'',done:false,box:true};W.items.push(it)}
+ }
+ W.seeds.push('moda-3');save('wishlist')}
 function applyMigrations(){
  migrateStudy();migrateFocus();
  const W=S.wishlist;if(!isArr(W.cats))W.cats=defaults().wishlist.cats;if(!isArr(W.items))W.items=[];if(!isArr(W.seeds))W.seeds=[];if(!isArr(W.deposits))W.deposits=[];

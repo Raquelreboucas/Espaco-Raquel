@@ -25,7 +25,7 @@ const id = (v, what) => {
   if (!s) throw new ValidationError(`Item sem id em "${what}".`);
   return s;
 };
-const img = (v) => (typeof v === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,/.test(v) ? v : '');
+const img = (v) => (typeof v === 'string' && (/^data:image\/(jpeg|png|webp|gif);base64,/.test(v) || /^\/img\/[\w.-]+$/.test(v)) ? v : '');
 const link = (v) => (/^https?:\/\//i.test(String(v ?? '')) ? str(v, 2000) : '');
 
 /**

@@ -68,7 +68,7 @@ export function extractImageUrl(html, base) {
   const found = {};
   for (const tag of html.match(/<(meta|link)\s[^>]*>/gi) ?? []) {
     const attrs = {};
-    for (const m of tag.matchAll(/([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) attrs[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? '');
+    for (const m of tag.matchAll(/([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)) attrs[m[1].toLowerCase()] = decode(m[2] ?? m[3] ?? m[4] ?? '');
     const key = (attrs.property || attrs.name || '').toLowerCase();
     if (/^<meta/i.test(tag) && wanted.includes(key) && attrs.content && !found[key]) found[key] = attrs.content;
     if (/^<link/i.test(tag) && (attrs.rel || '').toLowerCase() === 'image_src' && attrs.href) found.image_src = attrs.href;
