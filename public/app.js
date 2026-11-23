@@ -487,7 +487,7 @@ function wlCard(i,cname){
  return h('article',{class:'tile tone-'+c.tone+(i.done?' tile-done':'')},
   h('div',{class:'tile-media'},
    i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):h('div',{class:'tile-ph',html:phArt(i.name+' '+(i.brand||'')),'aria-hidden':'true'}),
-   h('div',{class:'tile-badges'},h('span',{class:'badge badge-cat'},c.name),i.room?h('span',{class:'badge badge-sub'},i.room):null)),
+   i.room?h('div',{class:'tile-badges'},h('span',{class:'badge badge-sub'},i.room)):null),
   h('div',{class:'tile-body'},
    fl('Item',h('h3',{class:'tile-title',style:'margin:0'},i.name)),
    fl('Marca/modelo',h('span',{style:'overflow-wrap:anywhere'},i.brand||'—')),
