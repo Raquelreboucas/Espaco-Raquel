@@ -1,6 +1,6 @@
 /* Tokens do Raquel DS. Layout: barra lateral estilo Notion + área de trabalho em fundo liso. */
 :root{
---bg:#f7faf8;--surface:#ffffff;--surface-2:#eef6f1;--text:#10221b;--muted:#4a5e55;
+--bg:#f5efe2;--surface:#ffffff;--surface-2:#ece4d2;--text:#10221b;--muted:#4a5e55;
 --line:#10221b1f;--line-strong:#10221b47;--control-border:#6b8076;
 --primary:#0e7c5a;--primary-hover:#0a6447;--on-primary:#ffffff;--accent-text:#0e7c5a;
 --mint:#a8e6cf;--mint-soft:#e3f7ee;--tag-text:#0a6447;--hover-bg:#0000000d;
