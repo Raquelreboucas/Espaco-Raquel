@@ -131,6 +131,19 @@ CREATE TABLE IF NOT EXISTS planner_focus (       -- "foco da semana", chave = se
   PRIMARY KEY (user_id, week_start)
 );
 
+-- ---------- Vision board (Início) ----------
+CREATE TABLE IF NOT EXISTS board_items (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id       TEXT NOT NULL,
+  type     TEXT NOT NULL CHECK (type IN ('image','quote','note')),
+  img      TEXT NOT NULL DEFAULT '',             -- data URL (só em fotos)
+  text     TEXT NOT NULL DEFAULT '',             -- frase ou nota
+  caption  TEXT NOT NULL DEFAULT '',
+  tone     TEXT NOT NULL DEFAULT 'mint' CHECK (tone IN ('mint','peach','pink','yellow','neutral')),
+  position INTEGER NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+
 -- ---------- Concursos (TJSP, Receita Federal, INSS...) ----------
 CREATE TABLE IF NOT EXISTS study_exams (
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

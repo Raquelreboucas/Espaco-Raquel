@@ -1,6 +1,6 @@
 # Meu Espaço Pessoal
 
-Wishlists, objetivos, planner semanal e estudos para concurso. Tem login com e-mail e senha, e cada conta só vê os próprios dados.
+Vision board, wishlists, objetivos, planner semanal e estudos para concurso. Tem login com e-mail e senha, e cada conta só vê os próprios dados.
 
 ## Rodar no seu computador
 
@@ -52,13 +52,14 @@ api/      index.js (entrada da Vercel)
 - Depois de 5 senhas erradas para o mesmo e-mail, o login fica bloqueado por 15 minutos.
 - Pedidos que alteram dados só são aceitos se vierem do próprio site.
 - O menu lateral tem "Sair" e "Baixar backup (.json)". No celular, os dois ficam no fim da tela Início.
+- A tela Início é o vision board: fotos, frases e notas que podem ser reordenadas arrastando. O quadro aceita até cerca de 4 MB.
 
 | Rota | O que faz |
 |---|---|
 | `POST /api/auth/register`, `/login`, `/logout` | cadastro, entrada e saída |
 | `GET /api/auth/me` | quem está logado |
-| `GET /api/state` | as 4 seções do usuário (`null` se ainda não gravada) |
-| `PUT /api/state/:section` | substitui uma seção (`wishlist`, `goals`, `planner`, `study`) numa transação |
+| `GET /api/state` | as seções do usuário (`null` se ainda não gravada) |
+| `PUT /api/state/:section` | substitui uma seção (`wishlist`, `goals`, `planner`, `study`, `tjsp`, `board`) numa transação |
 | `GET /api/export` | backup completo em JSON |
 
 ## Limites

@@ -93,7 +93,7 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
   const second = await signup(b, 'outra@exemplo.com');
   assert.equal(second.json.user.seed, false);
 
-  const nulls = { wishlist: null, goals: null, planner: null, study: null, tjsp: null };
+  const nulls = { wishlist: null, goals: null, planner: null, study: null, tjsp: null, board: null };
   assert.deepEqual((await a.get('/api/state')).json.sections, nulls);
 
   const data = {
@@ -125,6 +125,12 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
       registros: [{ id: 'q1', m: 'pen', d: '2026-11-22', f: 20, a: 15, t: 0, n: 'Vunesp 2023' }, { id: 'q2', m: 'pt', d: '2026-11-22', f: 10, a: 4 }],
       meta: 75,
     },
+    board: {
+      items: [
+        { id: 'b1', type: 'quote', img: '', text: 'frase', caption: '', tone: 'pink' },
+        { id: 'b2', type: 'image', img: 'data:image/jpeg;base64,AAAA', text: '', caption: 'legenda', tone: 'mint' },
+      ],
+    },
   };
   for (const [s, body] of Object.entries(data)) assert.equal((await a.put('/api/state/' + s, body)).status, 204);
   assert.deepEqual((await a.get('/api/state')).json.sections, data);
@@ -152,6 +158,8 @@ test('rejeita dados inválidos sem alterar o que já estava salvo', async () => 
   assert.equal((await c.put('/api/state/wishlist', { cats: [], items: [{ id: 'x', cat: 'nao-existe', name: 'a' }], seeds: [] })).status, 400);
   assert.equal((await c.put('/api/state/planner', { tasks: 'x', focus: {} })).status, 400);
   assert.equal((await c.put('/api/state/nada', {})).status, 404);
+  assert.equal((await c.put('/api/state/board', { items: [{ id: 'b', type: 'video' }] })).status, 400);
+  assert.equal((await c.put('/api/state/board', { items: [{ id: 'b', type: 'image', img: 'https://x.com/a.png' }] })).status, 400);
   assert.equal((await c.get('/api/state')).json.sections.wishlist.cats.length, 1);
   stop();
 });

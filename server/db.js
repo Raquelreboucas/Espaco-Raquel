@@ -4,13 +4,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const SECTIONS = ['wishlist', 'goals', 'planner', 'study', 'tjsp'];
+export const SECTIONS = ['wishlist', 'goals', 'planner', 'study', 'tjsp', 'board'];
 
 export class ValidationError extends Error {}
 
 /* ---------- sanitização ---------- */
 const TONES = ['mint', 'peach', 'pink', 'yellow', 'neutral'];
 const PRIOS = ['alta', 'media', 'baixa'];
+const BOARD_TYPES = ['image', 'quote', 'note'];
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v, max = 500) => String(v ?? '').slice(0, max);
 const bool = (v) => (v ? 1 : 0);
@@ -140,6 +141,12 @@ function makeStore(client) {
         })),
       };
     },
+    async board(u) {
+      const items = await rows('SELECT * FROM board_items WHERE user_id = ? ORDER BY position', [u]);
+      return {
+        items: items.map((b) => ({ id: b.id, type: b.type, img: b.img, text: b.text, caption: b.caption, tone: b.tone })),
+      };
+    },
     async tjsp(u) {
       const [topics, qs, cfg] = await Promise.all([
         rows('SELECT * FROM tjsp_topics WHERE user_id = ?', [u]),
@@ -256,6 +263,18 @@ function makeStore(client) {
           out.push(st('INSERT INTO study_log(user_id, id, exam_id, date, subject, minutes, position) VALUES (?,?,?,?,?,?,?)',
             [u, id(l.id, 'log'), eid, l.date, str(l.subject, 60), min, j]));
         });
+      });
+      return out;
+    },
+    board(u, d) {
+      const out = [st('DELETE FROM board_items WHERE user_id = ?', [u])];
+      arr(d?.items, 'items').forEach((b, i) => {
+        if (!BOARD_TYPES.includes(b.type)) throw new ValidationError('Item do quadro com tipo inválido.');
+        const photo = b.type === 'image' ? img(b.img) : '';
+        const text = b.type === 'image' ? '' : str(b.text, b.type === 'quote' ? 240 : 600);
+        if (b.type === 'image' ? !photo : !text.trim()) throw new ValidationError('Item do quadro sem conteúdo.');
+        out.push(st('INSERT INTO board_items(user_id, id, type, img, text, caption, tone, position) VALUES (?,?,?,?,?,?,?,?)',
+          [u, id(b.id, 'items'), b.type, photo, text, str(b.caption, 120), oneOf(b.tone, TONES, 'mint'), i]));
       });
       return out;
     },
