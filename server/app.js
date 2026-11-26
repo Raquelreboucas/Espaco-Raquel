@@ -28,7 +28,7 @@ export function createHandler(getStore) {
     const isObj = body !== null && typeof body === 'object' && !Buffer.isBuffer(body);
     res.writeHead(status, {
       'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin',
-      'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': CSP, 'X-Frame-Options': 'DENY', 'X-Robots-Tag': 'noindex, nofollow, noarchive',
       ...(isObj ? { 'Content-Type': 'application/json; charset=utf-8' } : {}), ...headers,
     });
     res.end(isObj ? JSON.stringify(body) : body);

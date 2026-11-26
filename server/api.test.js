@@ -56,6 +56,8 @@ test('serve o front-end e bloqueia tudo sem login', async () => {
   assert.equal(html.status, 200);
   assert.match(html.json, /Meu <em>espaço/);
   assert.match(html.headers.get('content-security-policy'), /default-src 'self'/);
+  assert.match(html.headers.get('x-robots-tag'), /noindex/); // fora dos buscadores
+  assert.match(html.json, /<meta name="robots" content="noindex/);
   assert.equal((await c.get('/..%2fserver%2fdb.js')).status, 404);
   for (const p of ['/api/state', '/api/export', '/api/auth/me']) assert.equal((await c.get(p)).status, 401, p);
   assert.equal((await c.put('/api/state/planner', { tasks: [], focus: {} })).status, 401);

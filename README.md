@@ -54,6 +54,7 @@ api/      index.js (entrada da Vercel)
 - Senhas são guardadas com scrypt (nunca em texto puro). A sessão é um cookie `HttpOnly` e `SameSite=Lax`, com validade de 30 dias, e `Secure` em produção.
 - Depois de 5 senhas erradas para o mesmo e-mail, o login fica bloqueado por 15 minutos.
 - Pedidos que alteram dados só são aceitos se vierem do próprio site.
+- O site pede aos buscadores para não indexar nada (cabeçalho `X-Robots-Tag` e `<meta name="robots">`).
 - O menu lateral tem "Sair" e "Baixar backup (.json)". No celular, os dois ficam no fim da tela Início.
 - A tela Início é o vision board: fotos, frases e notas que podem ser reordenadas arrastando. O quadro aceita até cerca de 4 MB.
 
