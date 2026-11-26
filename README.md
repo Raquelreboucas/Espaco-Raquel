@@ -13,7 +13,7 @@ npm start
 
 Abra http://localhost:3000 e clique em "Criar conta". Os dados ficam em `data/meu-espaco.db` (SQLite).
 
-A **primeira conta criada** recebe a lista de eletrodomésticos da categoria Casa. As outras começam vazias. A página Concurso já vem com três concursos (TJSP, Receita Federal e INSS), cada um com data, meta semanal, matérias e registro de estudo próprios.
+A **primeira conta criada** recebe a lista de eletrodomésticos da categoria Casa. As outras começam vazias. A página Concurso traz os painéis do TJSP, do INSS e da Receita Federal, cada um com edital, tópicos, baterias de questões e gráficos (a Receita tem ainda simulado e resumo do edital). O conteúdo do INSS e da Receita fica em `public/paineis-data.js`.
 
 `npm test` roda os testes da API e do login.
 
@@ -63,7 +63,7 @@ api/      index.js (entrada da Vercel)
 | `POST /api/auth/register`, `/login`, `/logout` | cadastro, entrada e saída |
 | `GET /api/auth/me` | quem está logado |
 | `GET /api/state` | as seções do usuário (`null` se ainda não gravada) |
-| `PUT /api/state/:section` | substitui uma seção (`wishlist`, `goals`, `planner`, `study`, `tjsp`, `board`) numa transação |
+| `PUT /api/state/:section` | substitui uma seção (`wishlist`, `goals`, `planner`, `study`, `tjsp`, `inss`, `rfb`, `board`) numa transação |
 | `GET /api/export` | backup completo em JSON |
 
 ## Limites

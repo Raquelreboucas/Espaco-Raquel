@@ -213,3 +213,34 @@ CREATE TABLE IF NOT EXISTS tjsp_settings (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   goal    INTEGER NOT NULL DEFAULT 80 CHECK (goal BETWEEN 0 AND 100)
 );
+
+-- ---------- Painéis INSS e Receita Federal (panel = 'inss' ou 'rfb') ----------
+CREATE TABLE IF NOT EXISTS panel_topics (
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  panel       TEXT NOT NULL,
+  topic_key   TEXT NOT NULL,
+  studied_on  TEXT NOT NULL,
+  reviewed_on TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, panel, topic_key)
+);
+CREATE TABLE IF NOT EXISTS panel_questions (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  panel    TEXT NOT NULL,
+  id       TEXT NOT NULL,
+  subject  TEXT NOT NULL,
+  topic    INTEGER,
+  date     TEXT NOT NULL,
+  total    INTEGER NOT NULL CHECK (total > 0),
+  hits     INTEGER NOT NULL CHECK (hits >= 0 AND hits <= total),
+  note     TEXT NOT NULL DEFAULT '',
+  position INTEGER NOT NULL,
+  PRIMARY KEY (user_id, panel, id)
+);
+CREATE TABLE IF NOT EXISTS panel_settings (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  panel    TEXT NOT NULL,
+  goal     INTEGER NOT NULL DEFAULT 80 CHECK (goal BETWEEN 0 AND 100),
+  sim      TEXT NOT NULL DEFAULT '{}',         -- simulado: acertos por matéria (JSON)
+  sim_disc REAL,                               -- simulado: nota da discursiva
+  PRIMARY KEY (user_id, panel)
+);

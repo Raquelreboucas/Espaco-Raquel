@@ -52,12 +52,14 @@ function defaults(){
     {id:'g2',area:'a6',title:'Fazer um curso de E-commerce',due:'',done:false,steps:[]}]},
   planner:{tasks:[],focus:{}},
   tjsp:{topicos:{},revisados:{},registros:[],meta:80},
+  inss:{topicos:{},revisados:{},registros:[],meta:80},
+  rfb:{topicos:{},revisados:{},registros:[],meta:80,sim:{},simDisc:null},
   study:{exams:EXAMS.map(([id,name])=>({id,name,date:'',weeklyHours:10,subjects:[],log:[]}))},
   board:{items:[]}
  };
 }
 let S=defaults();
-const SECS=['wishlist','goals','planner','study','tjsp','board'];
+const SECS=['wishlist','goals','planner','study','tjsp','inss','rfb','board'];
 const LS_BASE='meu-espaco-v1';let ME=null,canSeed=false;const LS=()=>LS_BASE+':'+(ME?ME.id:'x');
 let mode='carregando',diag='';
 function lsRead(){try{const r=localStorage.getItem(LS())||localStorage.getItem(LS_BASE);return r?JSON.parse(r):null}catch(e){return null}}
@@ -82,11 +84,14 @@ function setMode(m){mode=m;const el=$('#sync');if(!el)return;el.textContent='';
   carregando:'Conectando ao banco…',local:'Servidor indisponível. Salvo só neste navegador'}[m];
  el.append(h('span',{class:'dot'+(ok?'':' off')}),h('span',{role:'status'},msg))}
 const isArr=Array.isArray;
+const validPanel=d=>d.topicos&&typeof d.topicos==='object'&&isArr(d.registros);
 const VALID={
  wishlist:d=>isArr(d.cats)&&isArr(d.items),
  goals:d=>isArr(d.areas)&&isArr(d.items),
  planner:d=>isArr(d.tasks)&&d.focus&&typeof d.focus==='object',
- tjsp:d=>d.topicos&&typeof d.topicos==='object'&&isArr(d.registros),
+ tjsp:validPanel,
+ inss:validPanel,
+ rfb:validPanel,
  board:d=>isArr(d.items),
  study:d=>isArr(d.exams)||(isArr(d.subjects)&&isArr(d.log)&&d.exam&&typeof d.exam==='object')};
 async function init(){
@@ -679,7 +684,6 @@ function moveTaskModal(t){
   onSubmit(fd,fail){const v=String(fd.get('date')||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){fail('Escolha uma data.');return false}
    t.date=v;weekStart=sunday(parse(v));save('planner');rerender()},submit:'Mudar data'})}
 const WD=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
-function weekMinutes(ex){const s=iso(sunday(new Date())),e=iso(addDays(sunday(new Date()),6));return (ex?ex.log:S.study.exams.flatMap(x=>x.log)).filter(l=>l.date>=s&&l.date<=e).reduce((a,l)=>a+l.min,0)}
 function viewPlanner(){
  if(calOpen)setTimeout(calWatch,0);
  const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(sunday(new Date()));
@@ -710,124 +714,143 @@ function viewPlanner(){
 }
 
 /* ---------- Concurso ---------- */
-const SUGGEST=['Língua Portuguesa','Matemática e Raciocínio Lógico','Informática','Atualidades','Direito Constitucional','Direito Administrativo','Direito Civil','Direito Processual Civil','Direito Penal','Direito Processual Penal'];
 let examSel=null;
 const daysLeft=e=>e.date?Math.ceil((parse(e.date)-parse(todayIso()))/864e5):null;
 const goTop=()=>{window.scrollTo(0,0);const m=$('#main');if(m)m.scrollTop=0};
 function viewConcurso(){
- const e=S.study.exams.find(x=>x.id===examSel);
+ const e=S.study.exams.find(x=>x.id===examSel&&PANELS[x.id]);
  if(!e)examSel=null;
- return e?viewExam(e):viewExamList()}
+ return e?viewPanel(e):viewExamList()}
 function examCard(e){
- const tj=e.id==='tjsp',topics=tj?new Array(TJ_TOP):e.subjects.flatMap(s=>s.topics),tDone=tj?tjGeral().top:topics.filter(t=>t.d).length,nSub=tj?TJ_MATS.length:e.subjects.length,left=daysLeft(e);
- return h('button',{type:'button',class:'card exam-card',onclick:()=>{examSel=e.id;rerender();goTop()}},
+ P=PANELS[e.id];
+ const g=tjGeral(),left=daysLeft(e);
+ return h('button',{type:'button',class:'card exam-card',onclick:()=>{examSel=e.id;tjTab='painel';tjFilter='';rerender();goTop()}},
   h('div',{class:'row',style:'justify-content:space-between;flex-wrap:nowrap'},h('h2',null,e.name||'Sem nome'),h('span',{class:'icon-btn','aria-hidden':'true',html:ICONS.chev})),
   h('div',{style:'display:flex;flex-direction:column;gap:10px'},
    h('div',{class:'big'},left==null?'—':left<0?'Feito':left),
    h('p',{class:'muted',style:'margin:0'},left==null?'Defina a data da prova':left<0?'prova já realizada':left===0?'a prova é hoje':left===1?'dia para a prova':'dias para a prova'),
-   prog(tDone,topics.length),
-   h('p',{class:'muted',style:'margin:0'},tDone+' de '+topics.length+' tópicos · '+nSub+(nSub===1?' matéria':' matérias'))))}
+   prog(g.top,P.topicos),
+   h('p',{class:'muted',style:'margin:0'},g.top+' de '+P.topicos+' tópicos · '+P.mats.length+' matérias')))}
 function viewExamList(){
  return h('div',{class:'page'},
   head('Estudos para concurso',['Meus ',h('em',null,'concursos')]),
-  h('p',{class:'muted',style:'margin:0'},'Escolha um concurso para ver as matérias, os tópicos e o registro de estudo.'),
-  h('div',{class:'grid',style:'grid-template-columns:repeat(auto-fill,minmax(280px,1fr))'},S.study.exams.map(examCard)))}
-function viewExam(X){
- if(X.id==='tjsp')return viewTjsp(X);
- const subs=X.subjects,topics=subs.flatMap(s=>s.topics),tDone=topics.filter(t=>t.d).length;
- const left=daysLeft(X);
- const wk=weekMinutes(X),goalMin=Math.round((Number(X.weeklyHours)||0)*60);
- const logSubj=subs;
- const addSubj=name=>{name=name.trim();if(!name||subs.some(s=>s.name.toLowerCase()===name.toLowerCase()))return;subs.push({id:uid(),name,topics:[]});save('study')};
- const subInp='nsub';
- return h('div',{class:'page'},
-  head('Concurso',[h('em',null,X.name||'Sem nome')],[h('button',{class:'btn btn-ghost',onclick:()=>{examSel=null;rerender();goTop()}},'‹ Concursos')]),
-  h('div',{class:'row'},
-   h('span',{class:'badge'},left==null?'Sem data da prova':left<0?'Prova já realizada':left===0?'A prova é hoje':left+(left===1?' dia':' dias')+' para a prova'),
-   h('span',{class:'badge'},tDone+' de '+topics.length+' tópicos estudados')),
-  h('div',{class:'card'},h('h2',null,'Configuração'),
-   h('div',{class:'form-grid'},
-    field('Nome do concurso',h('input',{class:'inp',value:X.name,maxLength:80,placeholder:'Ex.: TJSP',autocomplete:'off',onchange:e=>{X.name=e.target.value.trim();save('study');rerender()}})),
-    field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
-    field('Meta semanal (horas)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(X.weeklyHours),onchange:e=>{X.weeklyHours=Math.max(0,Number(e.target.value)||0);save('study');rerender()}}))),
-   h('div',{style:'display:flex;flex-direction:column;gap:8px'},h('span',{class:'muted',style:'font-weight:700'},'Esta semana: '+(Math.round(wk/6)/10)+' h de '+X.weeklyHours+' h'),prog(wk,goalMin))),
-  h('h2',{class:'bar'},'Matérias'),
-  subs.length<SUGGEST.length?h('div',{class:'card'},h('h3',null,'Sugestões de matérias'),h('div',{class:'suggest'},SUGGEST.filter(n=>!subs.some(s=>s.name===n)).map(n=>h('button',{class:'chip',onclick:()=>{addSubj(n);rerender()}},'+ '+n)))):null,
-  h('div',{class:'grid',style:'grid-template-columns:repeat(auto-fill,minmax(300px,1fr))'},
-   subs.map(s=>{const done=s.topics.filter(t=>t.d).length,ti='nt-'+s.id;
-    const addT=()=>{const el=document.getElementById(ti),v=el.value.trim();if(!v)return;s.topics.push({id:uid(),t:v,d:false});save('study');rerender(ti)};
-    return h('section',{class:'card','aria-label':s.name},
-     h('div',{class:'subj-head'},h('h3',null,s.name),h('button',{class:'icon-btn','aria-label':'Excluir matéria '+s.name,onclick:()=>modal('Excluir matéria?',()=>h('p',{style:'margin:0'},'“'+s.name+'” e seus tópicos serão removidos.'),{submit:'Excluir',onSubmit:()=>{X.subjects=X.subjects.filter(x=>x.id!==s.id);save('study');rerender()}}),html:ICONS.x})),
-     prog(done,s.topics.length),
-     s.topics.length?null:h('p',{class:'empty'},'Adicione os tópicos do edital.'),
-     s.topics.map(t=>h('div',{class:'li'+(t.d?' done':'')},checkbox(t.d,'Estudado: '+t.t,e=>{t.d=e.target.checked;save('study');rerender()}),h('span',{class:'t'},t.t),
-      h('span',{class:'acts'},xbtn('Remover tópico '+t.t,()=>{s.topics=s.topics.filter(x=>x.id!==t.id);save('study');rerender()})))),
-     h('div',{class:'add'},h('input',{class:'inp',id:ti,placeholder:'Novo tópico',maxLength:140,autocomplete:'off','aria-label':'Novo tópico em '+s.name,onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();addT()}}}),h('button',{class:'btn btn-ghost',onclick:addT},'Adicionar')))}),
-   h('div',{class:'card',style:'justify-content:center'},h('h3',null,'Nova matéria'),h('div',{class:'add'},h('input',{class:'inp',id:subInp,placeholder:'Nome da matéria',maxLength:60,autocomplete:'off','aria-label':'Nome da nova matéria',onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();const el=document.getElementById(subInp);addSubj(el.value);rerender(subInp)}}}),h('button',{class:'btn btn-ghost',onclick:()=>{addSubj(document.getElementById(subInp).value);rerender(subInp)}},'Adicionar')))),
-  h('h2',{class:'bar'},'Registro de estudo'),
-  h('div',{class:'card'},
-   h('form',{class:'form-grid',onsubmit:e=>{e.preventDefault();const f=new FormData(e.target),min=Math.round(Number(f.get('min')));if(!(min>0)||min>1440)return;
-     X.log.unshift({id:uid(),date:f.get('date')||todayIso(),subject:String(f.get('subject')||''),min});save('study');rerender()}},
-    field('Matéria',dropdown({name:'subject',value:'',label:'Matéria',options:[['','Geral'],...logSubj.map(s=>[s.name,s.name])]})),
-    field('Data',h('input',{class:'inp',type:'date',name:'date',value:todayIso()})),
-    field('Minutos',h('input',{class:'inp',type:'number',name:'min',min:'1',max:'1440',placeholder:'60',required:true})),
-    h('div',{style:'display:flex;align-items:flex-end'},h('button',{class:'btn btn-primary',type:'submit'},'Registrar'))),
-   X.log.length?X.log.slice(0,10).map(l=>h('div',{class:'li'},h('span',{class:'t'},fmt({day:'numeric',month:'short'}).format(parse(l.date))+' · '+(l.subject||'Geral')+' · '+l.min+' min'),
-    h('span',{class:'acts'},xbtn('Remover registro',()=>{X.log=X.log.filter(x=>x.id!==l.id);save('study');rerender()})))):h('p',{class:'empty'},'Nenhum estudo registrado ainda.')));
-}
+  h('p',{class:'muted',style:'margin:0'},'Escolha um concurso para ver as matérias, os tópicos e o registro de questões.'),
+  h('div',{class:'exam-grid'},S.study.exams.filter(e=>PANELS[e.id]).map(examCard)))}
 
-/* ---------- Painel TJSP (edital completo, copiado do Painel de Estudos TJSP) ---------- */
-const TJ=window.TJSP_DATA;
-const TJ_MATS=TJ.EDITAL.flatMap(b=>b.materias.map(m=>({...m,bloco:b.bloco,blocoNome:b.nome})));
-const TJ_MAT=Object.fromEntries(TJ_MATS.map(m=>[m.id,m]));
-const TJ_TOP=TJ_MATS.reduce((s,m)=>s+m.topicos.length,0);
-let tjTab='painel',tjFilter='';
-const tjT=()=>S.tjsp;
+/* ---------- Painéis dos concursos (TJSP, INSS e Receita Federal) ----------
+   Cada concurso vira uma configuração com o mesmo formato; as telas são as mesmas para todos.
+   Tópico: {nome, ref, selos:[{c,txt,title}], notas:[]} e os dados originais usados nos filtros. */
+const NOME_SELO={R:'Receita',I:'INSS',T:'TJSP'};
+const selo=(c,txt,title)=>({c,txt,title});
+function panel(cfg){
+ const mats=cfg.edital.flatMap(b=>b.materias.map(m=>({...m,bloco:b.bloco,blocoNome:b.nome,topicos:m.topicos.map((t,i)=>cfg.topico(t,m.id+'-'+i,m))})));
+ return{unidade:['questão','questões'],blocoLabel:b=>'Bloco '+b.bloco,extraTabs:[],fonte:[],...cfg,mats,mat:Object.fromEntries(mats.map(m=>[m.id,m])),topicos:mats.reduce((s,m)=>s+m.topicos.length,0)}}
+
+const TJD=window.TJSP_DATA,PD=window.PAINEIS_DATA;
+const PANELS={
+ tjsp:panel({id:'tjsp',edital:TJD.EDITAL,total:TJD.TOTAL_Q,curto:TJD.CURTO,
+  topico(t,k){
+   const o=(TJD.OUTROS[k]||'').split('').filter(Boolean),cai=TJD.CAI_MUITO[k],nota=TJD.NOTA_OUTROS[k],selos=[],notas=[];
+   if(cai)selos.push(selo('M','Cai muito','Um dos tópicos que mais caem na prova'));
+   for(const x of o)selos.push(selo(x,NOME_SELO[x],'Também cai no edital '+TJD.CONCURSOS[x]+(nota?' · '+nota:'')));
+   if(nota)notas.push([nota]);
+   if(cai)notas.push([h('b',null,'Nas provas: '),(cai.q?tjQ(cai.q,'questão','questões')+' em '+cai.n+' das 4 provas (2014–2021). ':'')+'Mais cobrado: '+cai.foco]);
+   return{nome:t[0],ref:t[1]||'',selos,notas,cai:!!cai,outros:o}},
+  filtros:[['M','Cai muito',t=>t.cai],['R','Também na Receita',t=>t.outros.includes('R')],['I','Também no INSS',t=>t.outros.includes('I')]],
+  semComum:'Nenhum tópico desta matéria aparece nos editais da Receita Federal ou do INSS.',
+  comum(){
+   const dir=P.mats.filter(m=>m.bloco==='II'),resto=P.mats.filter(m=>m.bloco!=='II');
+   return[
+    tjPanel('O que mais cai na prova','tópicos com selo “Cai muito” · clique numa matéria para ver só eles',h('div',{class:'tj-grid2'},
+     tjGrupoBox([['M','Cai muito']],'Conhecimentos em Direito','tópicos que mais caem já estudados',dir,'M'),
+     tjGrupoBox([['M','Cai muito']],'Português e Conhecimentos Gerais','tópicos que mais caem já estudados',resto,'M'))),
+    tjPanel('Também cai na Receita Federal e no INSS','tópicos do TJSP presentes nos últimos editais',h('div',{class:'tj-grid2'},
+     tjGrupoBox([['R','Receita']],'Receita Federal','tópicos em comum já estudados',P.mats,'R'),
+     tjGrupoBox([['I','INSS']],'INSS','tópicos em comum já estudados',P.mats,'I')))]}}),
+
+ inss:panel({id:'inss',edital:PD.inss.EDITAL,total:PD.inss.TOTAL_Q,curto:PD.inss.CURTO,fonte:PD.inss.FONTE,
+  unidade:['item','itens'],blocoLabel:b=>b.bloco,marcaVisiveis:true,
+  topico(t){
+   const inc={A:'Cai muito',M:'Cai médio',B:'Cai pouco'}[t[2]],o=(t[3]||'').split('').filter(Boolean);
+   return{nome:t[0],ref:t[1]||'',selos:[selo(t[2]==='A'?'M':'N',inc,'Incidência em provas anteriores do Cebraspe'),...o.map(x=>selo(x,NOME_SELO[x],'Também cai no edital '+NOME_SELO[x]))],notas:[],inc:t[2],outros:o}},
+  filtros:[['tjsp','TJSP',t=>t.outros.includes('T')],['receita','Receita',t=>t.outros.includes('R')],['tres','Nos três',t=>t.outros.includes('T')&&t.outros.includes('R')],['alta','Cai muito',t=>t.inc==='A']],
+  notaAcerto:g=>{const certos=Math.round(g.accPond*P.total);return'nota líquida estimada ≈ '+(2*certos-P.total)+' de '+P.total+' (mínimo 36) · base: matérias que valem '+g.pesoPrat+' itens'},
+  comum(){return[tjPanel('Vale também para TJSP e Receita','tópicos do INSS que aparecem nos outros editais · clique numa matéria para ver só esses tópicos',h('div',{class:'tj-grid3'},
+   tjGrupoBox([['T','TJSP'],['R','Receita']],'Nos três concursos','INSS, TJSP e Receita',P.mats,'tres'),
+   tjGrupoBox([['T','TJSP']],'Também no TJSP','Escrevente Técnico Judiciário',P.mats,'tjsp'),
+   tjGrupoBox([['R','Receita']],'Também na Receita','Analista-Tributário e Auditor-Fiscal',P.mats,'receita')))]}}),
+
+ receita:panel({id:'rfb',edital:PD.rfb.EDITAL,total:PD.rfb.TOTAL_Q,curto:PD.rfb.CURTO,fonte:PD.rfb.FONTE,
+  blocoLabel:b=>'Módulo '+b.bloco,marcaVisiveis:true,estimada:PD.rfb.PROVA_ESTIMADA,
+  extraTabs:[{id:'simulado',name:'Simulado',view:()=>rfbSimulado()},{id:'edital',name:'Edital',view:()=>rfbEdital()}],
+  topico(t){const o=(t[2]||'').split('').filter(Boolean);
+   return{nome:t[0],ref:t[1]||'',selos:o.map(x=>selo(x,NOME_SELO[x],'Também cai no edital '+NOME_SELO[x])),notas:[],outros:o}},
+  filtros:[['T','Também no TJSP',t=>t.outros.includes('T')],['I','Também no INSS',t=>t.outros.includes('I')]],
+  semComum:'Nenhum tópico desta matéria tem etiqueta de TJSP ou INSS.',
+  comum(){
+   let tot=0,totF=0;
+   const rows=P.mats.map(m=>{
+    const idx=m.topicos.map((t,i)=>t.outros.length?i:-1).filter(i=>i>=0);
+    if(!idx.length&&!m.tambem)return null;
+    const f=idx.filter(i=>tjT().topicos[m.id+'-'+i]).length;tot+=idx.length;totF+=f;
+    const tags=[...new Set((m.tambem||idx.map(i=>m.topicos[i].outros.join('')).join('')).split(''))];
+    return h('tr',{class:'tj-row',tabindex:'0',onclick:()=>tjGo(m.id),onkeydown:e=>{if(e.key==='Enter')tjGo(m.id)}},
+     h('td',{style:'font-weight:700'},m.nome),h('td',null,h('div',{class:'tj-selos'},tags.map(x=>h('span',{class:'tj-selo '+x},NOME_SELO[x])))),
+     h('td',{class:'num'},idx.length?String(idx.length):'matéria toda'),h('td',{class:'num'},idx.length?f+'/'+idx.length:'–'))});
+   return[tjPanel('Em comum com TJSP e INSS','tópicos da Receita que também caem nesses concursos · clique numa matéria para abrir',
+    tjTable(['Matéria','Também cai em',['Tópicos em comum'],['Concluídos']],[rows,h('tr',{class:'tj-bloco'},h('td',null,'Total'),h('td'),h('td',{class:'num'},String(tot)),h('td',{class:'num'},totF+'/'+tot))]))]}})
+};
+
+let P=PANELS.tjsp,tjTab='painel',tjFilter='';
+const tjT=()=>S[P.id];
 const tjPct=x=>x==null||isNaN(x)?'–':Math.round(x*100)+'%';
 const tjDate=s=>{if(!s||typeof s!=='string')return'';const[y,m,d]=s.split('-');return d+'/'+m+'/'+y.slice(2)};
 const tjEsc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const tjShort=m=>TJ.CURTO[m.id]||m.nome;
+const tjShort=m=>P.curto[m.id]||m.nome;
 const tjGo=(id,f)=>{tjTab=id;tjFilter=f||'';rerender();goTop()};
 const tjPill=(cls,txt)=>h('span',{class:'tj-pill '+cls},txt);
-const tjQ=(n,one,many)=>n+' '+(n===1?one:many);
+function tjQ(n,one,many){return n+' '+(n===1?one:many)}
+const tjFiltro=id=>P.filtros.find(f=>f[0]===id);
 
 function tjStatus(acc){
  if(acc==null)return['none','sem questões'];
  const meta=tjT().meta/100;
  return acc>=meta?['good','na meta']:acc>=meta-.15?['warn','atenção']:['bad','abaixo']}
 function tjStats(id){
- const m=TJ_MAT[id],T=tjT(),feitos=m.topicos.filter((_,i)=>T.topicos[id+'-'+i]).length;
+ const m=P.mat[id],T=tjT(),feitos=m.topicos.filter((_,i)=>T.topicos[id+'-'+i]).length;
  let f=0,a=0;for(const r of T.registros)if(r.m===id){f+=r.f;a+=r.a}
  return{feitos,total:m.topicos.length,prog:feitos/m.topicos.length,f,a,acc:f?a/f:null}}
 function tjGeral(){
  let prog=0,top=0,f=0,a=0,pesoPrat=0,accPond=0;
- for(const m of TJ_MATS){const s=tjStats(m.id);prog+=s.prog*m.peso;top+=s.feitos;f+=s.f;a+=s.a;if(s.acc!=null){pesoPrat+=m.peso;accPond+=s.acc*m.peso}}
- return{prog:prog/TJ.TOTAL_Q,top,f,a,accPond:pesoPrat?accPond/pesoPrat:null,pesoPrat}}
+ for(const m of P.mats){const s=tjStats(m.id);prog+=s.prog*m.peso;top+=s.feitos;f+=s.f;a+=s.a;if(s.acc!=null){pesoPrat+=m.peso;accPond+=s.acc*m.peso}}
+ return{prog:prog/P.total,top,f,a,accPond:pesoPrat?accPond/pesoPrat:null,pesoPrat}}
 function tjGrupos(){
  const g={};
- for(const r of tjT().registros){const t=r.t==null?-1:r.t,k=r.m+'|'+t;(g[k]=g[k]||{m:r.m,t,f:0,a:0});g[k].f+=r.f;g[k].a+=r.a}
+ for(const r of tjT().registros){if(!P.mat[r.m])continue;const t=r.t==null||!P.mat[r.m].topicos[r.t]?-1:r.t,k=r.m+'|'+t;(g[k]=g[k]||{m:r.m,t,f:0,a:0});g[k].f+=r.f;g[k].a+=r.a}
  return Object.values(g).map(x=>({...x,e:x.f-x.a,acc:x.a/x.f}))}
 const tjByErr=(x,y)=>y.e-x.e||x.acc-y.acc;
-const tjTopicName=(m,t)=>t<0?'Vários tópicos / sem tópico definido':TJ_MAT[m].topicos[t][0];
+const tjTopicName=(m,t)=>t<0?'Vários tópicos / sem tópico definido':P.mat[m].topicos[t].nome;
 
 /* ----- peças visuais ----- */
 function tjRank(items,comMateria){
  const max=items[0]?items[0].e:1;
  return h('ol',{class:'tj-rank'},items.map((x,i)=>h('li',null,
-  h('button',{type:'button',class:'tj-rank-btn',title:'Abrir '+TJ_MAT[x.m].nome,onclick:()=>tjGo(x.m)},
+  h('button',{type:'button',class:'tj-rank-btn',title:'Abrir '+P.mat[x.m].nome,onclick:()=>tjGo(x.m)},
    h('span',{class:'pos'},String(i+1)),
-   h('span',{class:'nm'},x.nome,comMateria?h('small',null,TJ_MAT[x.m].nome):null),
+   h('span',{class:'nm'},x.nome,comMateria?h('small',null,P.mat[x.m].nome):null),
    h('span',{class:'ev'},h('b',null,String(x.e)),' '+(x.e===1?'erro':'erros')+' · '+tjPct(x.acc)+' de acerto')),
   h('span',{class:'tj-rank-bar'},h('i',{style:'width:'+Math.max(4,x.e/max*100).toFixed(0)+'%'})))))}
-function tjSelos(k){
- const o=TJ.OUTROS[k]||'',c=TJ.CAI_MUITO[k],nota=TJ.NOTA_OUTROS[k];
- if(!o&&!c)return null;
- const out=[h('div',{class:'tj-selos'},
-  c?h('span',{class:'tj-selo M',title:'Um dos tópicos que mais caem na prova'},'Cai muito'):null,
-  o.split('').filter(Boolean).map(x=>h('span',{class:'tj-selo '+x,title:'Também cai no edital '+TJ.CONCURSOS[x]+(nota?' · '+nota:'')},x==='R'?'Receita':'INSS')))];
- if(nota)out.push(h('span',{class:'tj-nota'},nota));
- if(c)out.push(h('span',{class:'tj-nota'},h('b',null,'Nas provas: '),(c.q?tjQ(c.q,'questão','questões')+' em '+c.n+' das 4 provas (2014–2021). ':'')+'Mais cobrado: '+c.foco));
- return out}
+function tjSelos(t){
+ return[t.selos.length?h('div',{class:'tj-selos'},t.selos.map(s=>h('span',{class:'tj-selo '+s.c,title:s.title},s.txt))):null,
+  t.notas.map(n=>h('span',{class:'tj-nota'},n))]}
+function tjGrupoBox(selos,titulo,legenda,mats,filtro){
+ const test=tjFiltro(filtro)[2],T=tjT();let tot=0,feitos=0;const porMat=[];
+ for(const m of mats){let n=0,d=0;m.topicos.forEach((t,i)=>{if(test(t)){n++;if(T.topicos[m.id+'-'+i])d++}});if(n){porMat.push({m,n,d});tot+=n;feitos+=d}}
+ return h('div',{class:'tj-outro'},
+  h('div',{class:'row'},selos.map(([c,l])=>h('span',{class:'tj-selo '+c},l)),h('b',null,titulo)),
+  h('div',{class:'tj-big'},String(feitos),h('small',null,' / '+tot)),h('span',{class:'muted',style:'font-size:13px'},legenda),
+  prog(feitos,tot),
+  h('div',{class:'row'},porMat.map(x=>h('button',{type:'button',class:'chip',title:x.d+' de '+x.n+' estudados',onclick:()=>tjGo(x.m.id,filtro)},tjShort(x.m),' ',h('b',null,String(x.n))))))}
 function tjDonut(segs,big,small){
  const R=52,C=2*Math.PI*R;let off=0;
  let s='<svg viewBox="0 0 140 140" width="120" height="120" role="img" aria-label="'+tjEsc(big+' '+small)+'"><circle cx="70" cy="70" r="'+R+'" fill="none" stroke="var(--surface-2)" stroke-width="18"/>';
@@ -835,15 +858,15 @@ function tjDonut(segs,big,small){
   s+='<circle cx="70" cy="70" r="'+R+'" fill="none" stroke="'+g.cor+'" stroke-width="18" stroke-dasharray="'+len.toFixed(2)+' '+(C-len).toFixed(2)+'" stroke-dashoffset="'+(-off).toFixed(2)+'" transform="rotate(-90 70 70)"/>';off+=len}
  return s+'<text x="70" y="72" text-anchor="middle" font-size="26" font-weight="600" fill="var(--text)">'+tjEsc(big)+'</text><text x="70" y="91" text-anchor="middle" font-size="11" fill="var(--muted)">'+tjEsc(small)+'</text></svg>'}
 function tjChartMat(){
- const T=tjT(),rowH=30,labelW=118,padR=44,W=520,top=22,H=top+TJ_MATS.length*rowH+22,plotW=W-labelW-padR,x=v=>labelW+v*plotW,meta=T.meta/100;
+ const T=tjT(),rowH=30,labelW=118,padR=44,W=520,top=22,H=top+P.mats.length*rowH+22,plotW=W-labelW-padR,x=v=>labelW+v*plotW,meta=T.meta/100;
  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Taxa de acerto por matéria">';
  for(const t of[0,.25,.5,.75,1])s+='<line x1="'+x(t)+'" x2="'+x(t)+'" y1="'+(top-4)+'" y2="'+(H-20)+'" stroke="var(--line)"/><text x="'+x(t)+'" y="'+(H-6)+'" font-size="11" fill="var(--muted)" text-anchor="middle">'+t*100+'%</text>';
- TJ_MATS.forEach((m,i)=>{
-  const st=tjStats(m.id),y=top+i*rowH,[cls,lab]=tjStatus(st.acc);
+ P.mats.forEach((m,i)=>{
+  const st=tjStats(m.id),y=top+i*rowH,lab=tjStatus(st.acc)[1];
   s+='<text x="'+(labelW-10)+'" y="'+(y+rowH/2+4)+'" font-size="12.5" fill="var(--text)" text-anchor="end">'+tjEsc(tjShort(m))+'</text>';
   s+='<g data-goto="'+m.id+'" style="cursor:pointer"><title>'+tjEsc(m.nome+(st.f?' · '+st.a+' de '+st.f+' questões · '+tjPct(st.acc)+' · '+lab:' · nenhuma questão registrada'))+'</title><rect x="'+labelW+'" y="'+(y+2)+'" width="'+plotW+'" height="'+(rowH-4)+'" fill="transparent"/>';
-  if(st.acc!=null){const w=Math.max(st.acc*plotW,5),color='var(--primary)';
-   s+='<rect x="'+labelW+'" y="'+(y+8)+'" width="'+w+'" height="'+(rowH-16)+'" rx="4" fill="'+color+'"/><text x="'+(x(st.acc)+6)+'" y="'+(y+rowH/2+4)+'" font-size="12" font-weight="700" fill="var(--text)">'+tjPct(st.acc)+'</text>'}
+  if(st.acc!=null){const w=Math.max(st.acc*plotW,5);
+   s+='<rect x="'+labelW+'" y="'+(y+8)+'" width="'+w+'" height="'+(rowH-16)+'" rx="4" fill="var(--primary)"/><text x="'+(x(st.acc)+6)+'" y="'+(y+rowH/2+4)+'" font-size="12" font-weight="700" fill="var(--text)">'+tjPct(st.acc)+'</text>'}
   else s+='<text x="'+(labelW+4)+'" y="'+(y+rowH/2+4)+'" font-size="11.5" fill="var(--muted)">sem questões</text>';
   s+='</g>'});
  s+='<line x1="'+x(meta)+'" x2="'+x(meta)+'" y1="'+(top-8)+'" y2="'+(H-20)+'" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="'+x(meta)+'" y="'+(top-11)+'" font-size="11" font-weight="600" fill="var(--text)" text-anchor="middle">meta '+T.meta+'%</text></svg>';
@@ -870,23 +893,25 @@ function tjChartEvo(regs){
  return h('div',{class:'tj-chart',html:s})}
 const tjPanel=(title,sub,...kids)=>h('section',{class:'card tj-panel'},h('div',{class:'tj-ph'},h('h3',null,title),sub?h('span',{class:'muted tj-sub'},sub):null),...kids);
 const tjLegend=rows=>h('ul',{class:'tj-legend'},rows.map(([cor,l,v])=>h('li',null,h('span',null,h('i',{style:'background:'+cor}),l),h('b',null,String(v)))));
+/* cabeçalhos em lista ([nome]) ficam alinhados à direita, como os números */
+const tjTable=(cols,rows)=>h('div',{class:'tbl-wrap'},h('table',{class:'tbl tj-tbl'},h('thead',null,h('tr',null,cols.map(c=>h('th',{scope:'col',class:isArr(c)?'num':null},isArr(c)?c[0]:c)))),h('tbody',null,rows)));
+const tjStat=(k,v,sub,cls)=>h('div',{class:'stat'+(cls?' '+cls:'')},h('span',{class:'stat-k'},k),h('strong',{class:'stat-v'},v),h('span',{class:'stat-s'},sub));
 
 /* ----- aba "Painel" ----- */
 function tjPainel(){
  const T=tjT(),g=tjGeral();
- const stat=(k,v,sub,cls)=>h('div',{class:'stat'+(cls?' '+cls:'')},h('span',{class:'stat-k'},k),h('strong',{class:'stat-v'},v),h('span',{class:'stat-s'},sub));
  const stats=h('section',{class:'stats tj-stats','aria-label':'Resumo'},
-  stat('Progresso no edital',Math.round(g.prog*100)+'%','ponderado pelo peso','main'),
-  stat('Tópicos estudados',g.top+' / '+TJ_TOP,g.top?Math.round(g.top/TJ_TOP*100)+'% dos tópicos do edital':'nenhum marcado ainda'),
-  stat('Questões feitas',g.f.toLocaleString('pt-BR'),g.f?g.a.toLocaleString('pt-BR')+' acertos · '+tjPct(g.a/g.f)+' sem ponderar':'nenhuma registrada ainda'),
-  stat('Acerto ponderado',tjPct(g.accPond),g.accPond==null?'registre questões para calcular':'≈ '+Math.round(g.accPond*TJ.TOTAL_Q)+' de '+TJ.TOTAL_Q+' na prova'));
+  tjStat('Progresso no edital',Math.round(g.prog*100)+'%','ponderado pelo peso','main'),
+  tjStat('Tópicos estudados',g.top+' / '+P.topicos,g.top?Math.round(g.top/P.topicos*100)+'% dos tópicos do edital':'nenhum marcado ainda'),
+  tjStat('Questões feitas',g.f.toLocaleString('pt-BR'),g.f?g.a.toLocaleString('pt-BR')+' acertos · '+tjPct(g.a/g.f)+' sem ponderar':'nenhuma registrada ainda'),
+  tjStat('Acerto ponderado',tjPct(g.accPond),g.accPond==null?'registre questões para calcular':P.notaAcerto?P.notaAcerto(g):'≈ '+Math.round(g.accPond*P.total)+' de '+P.total+' na prova'));
 
  const charts=h('div',{class:'tj-grid2'},
   tjPanel('Acerto por matéria','clique numa barra para abrir a matéria',T.registros.length?null:h('p',{class:'empty'},'Registre baterias de questões nas abas das matérias para ver as barras.'),tjChartMat()),
   tjPanel('Evolução do acerto','acumulado, por dia',tjChartEvo(T.registros)));
 
  const grupos=tjGrupos();
- const mats=TJ_MATS.map(m=>{const s=tjStats(m.id);return{m:m.id,nome:m.nome,e:s.f-s.a,acc:s.acc}}).filter(x=>x.e>0).sort(tjByErr);
+ const mats=P.mats.map(m=>{const s=tjStats(m.id);return{m:m.id,nome:m.nome,e:s.f-s.a,acc:s.acc}}).filter(x=>x.e>0).sort(tjByErr);
  const tops=grupos.filter(x=>x.e>0).sort(tjByErr).slice(0,10).map(x=>({...x,nome:tjTopicName(x.m,x.t)}));
  const totalE=mats.reduce((s,x)=>s+x.e,0);
  const erros=tjPanel('Onde você mais erra',totalE?totalE+' erros registrados no total · clique para abrir a matéria':'soma dos erros nas baterias registradas',
@@ -894,63 +919,47 @@ function tjPainel(){
    h('div',null,h('span',{class:'eyebrow'},'Erros por matéria'),mats.length?tjRank(mats,false):h('p',{class:'empty'},'Nenhum erro registrado ainda.')),
    h('div',null,h('span',{class:'eyebrow'},'Tópicos com mais erros no edital'),tops.length?tjRank(tops,true):h('p',{class:'empty'},'Escolha o tópico ao registrar cada bateria para ver aqui os 10 que mais derrubam você.'))));
 
- const grupoBox=(selo,titulo,legenda,ids,test,filtro)=>{
-  let tot=0,feitos=0;const porMat={};
-  for(const[k,v]of Object.entries(test)){const mid=k.split('-')[0];if(!ids.includes(mid)||!v)continue;tot++;if(T.topicos[k])feitos++;porMat[mid]=(porMat[mid]||0)+1}
-  return h('div',{class:'tj-outro'},
-   h('div',{class:'row'},h('span',{class:'tj-selo '+selo},selo==='M'?'Cai muito':selo==='R'?'Receita':'INSS'),h('b',null,titulo)),
-   h('div',{class:'tj-big'},String(feitos),h('small',null,' / '+tot)),h('span',{class:'muted',style:'font-size:13px'},legenda),
-   prog(feitos,tot),
-   h('div',{class:'row'},ids.filter(id=>porMat[id]).map(id=>h('button',{type:'button',class:'chip',onclick:()=>tjGo(id,filtro)},tjShort(TJ_MAT[id]),' ',h('b',null,String(porMat[id]))))))};
- const dir=TJ_MATS.filter(m=>m.bloco==='II').map(m=>m.id),resto=TJ_MATS.map(m=>m.id).filter(id=>!dir.includes(id)),todas=TJ_MATS.map(m=>m.id);
- const caiTest=Object.fromEntries(Object.keys(TJ.CAI_MUITO).map(k=>[k,1]));
- const cai=tjPanel('O que mais cai na prova','tópicos com selo “Cai muito” · clique numa matéria para ver só eles',
-  h('div',{class:'tj-grid2'},grupoBox('M','Conhecimentos em Direito','tópicos que mais caem já estudados',dir,caiTest,'M'),grupoBox('M','Português e Conhecimentos Gerais','tópicos que mais caem já estudados',resto,caiTest,'M')));
- const por=(c)=>Object.fromEntries(Object.entries(TJ.OUTROS).map(([k,v])=>[k,v.includes(c)]));
- const outros=tjPanel('Também cai na Receita Federal e no INSS','tópicos do TJSP presentes nos últimos editais',
-  h('div',{class:'tj-grid2'},grupoBox('R','Receita Federal','tópicos em comum já estudados',todas,por('R'),'R'),grupoBox('I','INSS','tópicos em comum já estudados',todas,por('I'),'I')));
-
- const rows=[];
- for(const b of TJ.EDITAL){
-  rows.push(h('tr',{class:'tj-bloco'},h('td',{colspan:'7'},'Bloco '+b.bloco+' · '+b.nome+' · '+b.questoes+' questões')));
-  for(const m of b.materias){const s=tjStats(m.id),[cls,lab]=tjStatus(s.acc);
-   rows.push(h('tr',{class:'tj-row',tabindex:'0',onclick:()=>tjGo(m.id),onkeydown:e=>{if(e.key==='Enter')tjGo(m.id)}},
+ const rows=P.edital.map(b=>[
+  h('tr',{class:'tj-bloco'},h('td',{colspan:'7'},P.blocoLabel(b)+' · '+b.nome+' · '+b.questoes+' '+P.unidade[1])),
+  b.materias.map(({id})=>{const m=P.mat[id],s=tjStats(id),[cls,lab]=tjStatus(s.acc);
+   return h('tr',{class:'tj-row',tabindex:'0',onclick:()=>tjGo(id),onkeydown:e=>{if(e.key==='Enter')tjGo(id)}},
     h('td',{style:'font-weight:700'},m.nome),h('td',{class:'num'},String(m.peso)),
     h('td',null,h('span',{class:'tj-mini'},h('i',{style:'width:'+(s.prog*100).toFixed(0)+'%'})),s.feitos+'/'+s.total),
-    h('td',{class:'num'},String(s.f)),h('td',{class:'num'},String(s.a)),h('td',{class:'num'},tjPct(s.acc)),h('td',null,tjPill(cls,lab))))}}
- const th=(t,c)=>h('th',{scope:'col',class:c||null},t);
- const quadro=tjPanel('Quadro por matéria','peso = questões na prova · clique numa matéria para abrir',
-  h('div',{class:'tbl-wrap'},h('table',{class:'tbl tj-tbl'},h('thead',null,h('tr',null,th('Matéria'),th('Peso','num'),th('Tópicos'),th('Questões','num'),th('Acertos','num'),th('Acerto','num'),th('Situação'))),h('tbody',null,rows))));
- return h('div',{class:'tj-stack'},stats,charts,erros,cai,outros,quadro)}
+    h('td',{class:'num'},String(s.f)),h('td',{class:'num'},String(s.a)),h('td',{class:'num'},tjPct(s.acc)),h('td',null,tjPill(cls,lab)))})]);
+ const quadro=tjPanel('Quadro por matéria','peso = '+P.unidade[1]+' na prova · clique numa matéria para abrir',
+  tjTable(['Matéria',['Peso'],'Tópicos',['Questões'],['Acertos'],['Acerto'],'Situação'],rows));
+ return h('div',{class:'tj-stack'},stats,charts,erros,P.comum(),quadro)}
 
 /* ----- aba de uma matéria ----- */
 function tjMateria(m){
  const T=tjT(),s=tjStats(m.id),[cls,lab]=tjStatus(s.acc),regs=T.registros.filter(r=>r.m===m.id);
  const key=i=>m.id+'-'+i;
  const topicStats=i=>{let f=0,a=0;for(const r of regs)if(r.t===i){f+=r.f;a+=r.a}return{f,a}};
- const toggle=(i,on)=>{const k=key(i);if(on)T.topicos[k]=todayIso();else{delete T.topicos[k];delete T.revisados[k]}save('tjsp');rerender()};
- const allDone=s.feitos===s.total;
+ const toggle=(i,on)=>{const k=key(i);if(on)T.topicos[k]=todayIso();else{delete T.topicos[k];delete T.revisados[k]}save(P.id);rerender()};
  const rev=m.topicos.filter((_,i)=>T.topicos[key(i)]&&T.revisados[key(i)]).length,e=s.f-s.a;
- const hasF=f=>m.topicos.some((_,i)=>f==='M'?TJ.CAI_MUITO[key(i)]:(TJ.OUTROS[key(i)]||'').includes(f));
- const temOutros=hasF('R')||hasF('I');
+ const hasF=f=>m.topicos.some(f[2]);
+ const disponiveis=P.filtros.filter(hasF);
+ const ativo=tjFiltro(tjFilter),visible=t=>!ativo||ativo[2](t);
+ const marcaveis=m.topicos.map((t,i)=>i).filter(i=>!P.marcaVisiveis||visible(m.topicos[i]));
+ const allDone=marcaveis.length>0&&marcaveis.every(i=>T.topicos[key(i)]);
  const filtroBtn=(f,txt)=>h('button',{type:'button',class:'chip tj-chip','aria-pressed':String(tjFilter===f),onclick:()=>{tjFilter=f;rerender()}},txt);
- const visible=i=>!tjFilter||(tjFilter==='M'?!!TJ.CAI_MUITO[key(i)]:(TJ.OUTROS[key(i)]||'').includes(tjFilter));
 
- const topics=h('ul',{class:'tj-topics'},m.topicos.map((t,i)=>{
-  if(!visible(i))return null;
+ const itens=m.topicos.map((t,i)=>{
+  if(!visible(t))return null;
   const k=key(i),dt=T.topicos[k],rv=T.revisados[k],ts=topicStats(i);
   let txt=dt?'estudado em '+tjDate(dt):'';if(dt&&rv)txt+=' · revisado em '+tjDate(rv);
   const st=ts.f?tjStatus(ts.a/ts.f)[0]:'';
   return h('li',{class:dt?'done':''},
-   h('label',{class:'tj-topic'},checkbox(!!dt,'Estudado: '+t[0],ev=>toggle(i,ev.target.checked)),
+   h('label',{class:'tj-topic'},checkbox(!!dt,'Estudado: '+t.nome,ev=>toggle(i,ev.target.checked)),
     h('span',{class:'tj-tbody'},
-     h('span',{class:'tj-tname'},t[0]),t[1]?h('span',{class:'tj-ref'},t[1]):null,tjSelos(k),
+     h('span',{class:'tj-tname'},t.nome),t.ref?h('span',{class:'tj-ref'},t.ref):null,tjSelos(t),
      txt?h('span',{class:'tj-date'},txt):null,
      ts.f?h('span',{class:'tj-tq '+st},ts.a+'/'+ts.f+' questões · '+tjPct(ts.a/ts.f)+' · '+tjQ(ts.f-ts.a,'erro','erros')):null)),
-   dt?h('button',{type:'button',class:'btn btn-ghost btn-sm','aria-pressed':String(!!rv),onclick:()=>{if(rv)delete T.revisados[k];else T.revisados[k]=todayIso();save('tjsp');rerender()}},rv?'Revisado ✓':'Revisar'):null)}));
+   dt?h('button',{type:'button',class:'btn btn-ghost btn-sm','aria-pressed':String(!!rv),onclick:()=>{if(rv)delete T.revisados[k];else T.revisados[k]=todayIso();save(P.id);rerender()}},rv?'Revisado ✓':'Revisar'):null)});
+ const topics=itens.some(Boolean)?h('ul',{class:'tj-topics'},itens):h('p',{class:'empty'},'Nenhum tópico desta matéria entra nesse filtro.');
 
  const errBox=h('p',{class:'err',role:'alert',style:'display:none'});
- const topicOpts=[['','Vários tópicos / matéria toda'],...m.topicos.map((t,i)=>{const q=topicStats(i);return[String(i),(i+1)+'. '+t[0]+(q.f?' · '+q.a+'/'+q.f:'')]})];
+ const topicOpts=[['','Vários tópicos / matéria toda'],...m.topicos.map((t,i)=>{const q=topicStats(i);return[String(i),(i+1)+'. '+t.nome+(q.f?' · '+q.a+'/'+q.f:'')]})];
  const form=h('form',{class:'form-grid tj-form',onsubmit:ev=>{
    ev.preventDefault();const fd=new FormData(ev.target),dt=String(fd.get('d')||''),f=parseInt(fd.get('f'),10),a=parseInt(fd.get('a'),10),n=String(fd.get('n')||'').trim(),tv=String(fd.get('t')||'');
    const fail=msg=>{errBox.textContent=msg;errBox.style.display='block'};
@@ -958,25 +967,25 @@ function tjMateria(m){
    if(!(f>0))return fail('Informe quantas questões você fez.');
    if(!(a>=0))return fail('Informe quantas você acertou (pode ser 0).');
    if(a>f)return fail('Os acertos não podem passar do número de questões feitas.');
-   T.registros.push({id:uid(),m:m.id,d:dt,f,a,...(tv!==''?{t:+tv}:{}),...(n?{n:n.slice(0,200)}:{})});save('tjsp');rerender()}},
+   T.registros.push({id:uid(),m:m.id,d:dt,f,a,...(tv!==''?{t:+tv}:{}),...(n?{n:n.slice(0,200)}:{})});save(P.id);rerender()}},
   h('div',{style:'grid-column:1/-1'},field('Tópico',dropdown({name:'t',value:'',label:'Tópico',options:topicOpts}))),
   field('Data',h('input',{class:'inp',type:'date',name:'d',value:todayIso()})),
   field('Questões feitas',h('input',{class:'inp',type:'number',name:'f',min:'1',step:'1',inputmode:'numeric',placeholder:'20'})),
   field('Acertos',h('input',{class:'inp',type:'number',name:'a',min:'0',step:'1',inputmode:'numeric',placeholder:'15'})),
-  field('Fonte ou anotação (opcional)',h('input',{class:'inp',name:'n',maxLength:200,autocomplete:'off',placeholder:'ex.: Vunesp 2023, errei crase'})),
+  field('Fonte ou anotação (opcional)',h('input',{class:'inp',name:'n',maxLength:200,autocomplete:'off',placeholder:'ex.: prova anterior, errei crase'})),
   errBox,h('div',{style:'grid-column:1/-1'},h('button',{class:'btn btn-primary',type:'submit'},'Registrar bateria')));
 
  const ordered=[...regs].sort((x,y)=>y.d.localeCompare(x.d));
- const delReg=r=>modal('Apagar registro?',()=>h('p',{style:'margin:0'},'A bateria de '+tjDate(r.d)+' ('+r.a+' de '+r.f+') será removida.'),{submit:'Apagar',onSubmit:()=>{T.registros=T.registros.filter(x=>x.id!==r.id);save('tjsp');rerender()}});
+ const delReg=r=>modal('Apagar registro?',()=>h('p',{style:'margin:0'},'A bateria de '+tjDate(r.d)+' ('+r.a+' de '+r.f+') será removida.'),{submit:'Apagar',onSubmit:()=>{T.registros=T.registros.filter(x=>x.id!==r.id);save(P.id);rerender()}});
  const list=ordered.length?h('div',{class:'tj-qlist'},ordered.map(r=>h('div',{class:'li'},
-  h('span',{class:'t'},tjDate(r.d)+' · '+r.a+' de '+r.f+' · '+tjPct(r.a/r.f),h('small',{class:'muted',style:'display:block'},(r.t!=null&&m.topicos[r.t]?m.topicos[r.t][0]:'Vários tópicos')+(r.n?' · '+r.n:''))),
+  h('span',{class:'t'},tjDate(r.d)+' · '+r.a+' de '+r.f+' · '+tjPct(r.a/r.f),h('small',{class:'muted',style:'display:block'},(r.t!=null&&m.topicos[r.t]?m.topicos[r.t].nome:'Vários tópicos')+(r.n?' · '+r.n:''))),
   h('span',{class:'acts'},xbtn('Apagar registro de '+tjDate(r.d),()=>delReg(r)))))):h('p',{class:'empty'},'Nenhuma bateria registrada nesta matéria.');
  const ge=tjGrupos().filter(x=>x.m===m.id&&x.e>0).sort(tjByErr).map(x=>({...x,nome:tjTopicName(x.m,x.t)}));
 
  return h('div',{class:'tj-stack'},
   h('div',{class:'tj-mhead'},
-   h('div',null,h('span',{class:'eyebrow'},'Bloco '+m.bloco+' · '+m.blocoNome),h('h2',null,m.nome)),
-   h('div',{class:'row'},h('span',{class:'badge'},tjQ(m.peso,'questão','questões')+' na prova'),h('span',{class:'badge'},s.feitos+'/'+s.total+' tópicos'),
+   h('div',null,h('span',{class:'eyebrow'},P.blocoLabel({bloco:m.bloco})+' · '+m.blocoNome+(m.nota?' · '+m.nota:'')),h('h2',null,m.nome)),
+   h('div',{class:'row'},h('span',{class:'badge'},tjQ(m.peso,...P.unidade)+' na prova'),h('span',{class:'badge'},s.feitos+'/'+s.total+' tópicos'),
     s.f?h('span',{class:'badge'},s.a+'/'+s.f+' questões'):null,tjPill(cls,s.f?tjPct(s.acc)+' · '+lab:'sem questões'))),
   h('div',{class:'tj-grid3'},
    tjPanel('Acertos e erros',null,h('div',{class:'tj-donut'},h('div',{html:tjDonut(s.f?[{frac:s.a/s.f,cor:'var(--tj-good)'},{frac:e/s.f,cor:'var(--tj-bad)'}]:[],s.f?tjPct(s.acc):'–',s.f?'de acerto':'sem questões')}),
@@ -986,30 +995,74 @@ function tjMateria(m){
    tjPanel('Evolução do acerto','acumulado, por dia',tjChartEvo(regs))),
   h('div',{class:'tj-cols'},
    h('div',{class:'tj-stack'},
-    h('div',{class:'tj-ph'},h('h3',null,'Tópicos do edital'),h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{m.topicos.forEach((_,i)=>{const k=key(i);if(allDone){delete T.topicos[k];delete T.revisados[k]}else if(!T.topicos[k])T.topicos[k]=todayIso()});save('tjsp');rerender()}},allDone?'Desmarcar todos':'Marcar todos')),
-    h('div',{class:'row',role:'group','aria-label':'Filtrar tópicos'},h('span',{class:'muted',style:'font-size:13px;font-weight:700'},'Mostrar:'),filtroBtn('','Todos'),hasF('M')?filtroBtn('M','Cai muito'):null,hasF('R')?filtroBtn('R','Também na Receita'):null,hasF('I')?filtroBtn('I','Também no INSS'):null),
-    temOutros?null:h('p',{class:'muted',style:'margin:0;font-size:13px'},'Nenhum tópico desta matéria aparece nos editais da Receita Federal ou do INSS.'),
+    h('div',{class:'tj-ph'},h('h3',null,'Tópicos do edital'),h('button',{type:'button',class:'btn btn-ghost btn-sm',disabled:!marcaveis.length,onclick:()=>{marcaveis.forEach(i=>{const k=key(i);if(allDone){delete T.topicos[k];delete T.revisados[k]}else if(!T.topicos[k])T.topicos[k]=todayIso()});save(P.id);rerender()}},allDone?'Desmarcar todos':'Marcar todos')),
+    h('div',{class:'row',role:'group','aria-label':'Filtrar tópicos'},h('span',{class:'muted',style:'font-size:13px;font-weight:700'},'Mostrar:'),filtroBtn('','Todos'),P.filtros.filter(f=>hasF(f)||f[0]===tjFilter).map(f=>filtroBtn(f[0],f[1]))),
+    P.semComum&&!disponiveis.some(f=>f[0]!=='M')?h('p',{class:'muted',style:'margin:0;font-size:13px'},P.semComum):null,
     topics),
    h('div',{class:'tj-stack'},
     h('section',{class:'card'},h('h3',null,'Registrar questões'),form),
     h('section',{class:'card'},h('h3',null,'Baterias registradas'),s.f?h('div',{class:'row'},h('span',{class:'badge'},'Total '+s.f),h('span',{class:'badge'},'Acertos '+s.a),h('span',{class:'badge'},'Erros '+e)):null,list),
     h('section',{class:'card'},h('h3',null,'Onde você mais erra nesta matéria'),ge.length?tjRank(ge,false):h('p',{class:'empty'},s.f?'Nenhum erro nesta matéria. Mandou bem!':'Registre baterias escolhendo o tópico para ver o ranking.')))))}
 
-/* ----- página do concurso TJSP ----- */
-function viewTjsp(X){
- const T=tjT(),g=tjGeral(),left=daysLeft(X);
- if(tjTab!=='painel'&&!TJ_MAT[tjTab])tjTab='painel';
- const items=[{id:'painel',name:'Painel'},...TJ_MATS.map(m=>({id:m.id,name:tjShort(m)}))];
+/* ----- Receita: simulado (mínimos do item 9.6.12 do edital) e resumo do edital ----- */
+const SIM={modulo:35,disc:30,discMin:15};
+function rfbSimulado(){
+ const T=tjT();if(!T.sim||typeof T.sim!=='object')T.sim={};
+ const result=h('section',{class:'card tj-panel','aria-live':'polite'});
+ const draw=()=>{
+  let b=0,e=0;for(const m of P.mats){const v=T.sim[m.id]||0;if(m.bloco==='I')b+=v;else e+=v}
+  const disc=T.simDisc||0,zeradas=P.mats.filter(m=>!(T.sim[m.id]>0)).map(m=>m.nome),any=Object.keys(T.sim).length>0||T.simDisc!=null;
+  const pass=b>=SIM.modulo&&e>=SIM.modulo&&!zeradas.length&&disc>=SIM.discMin,fmtN=n=>n.toLocaleString('pt-BR'),max=P.total+SIM.disc;
+  const modulo=id=>P.edital.find(x=>x.bloco===id).questoes;
+  const crit=(ok,txt)=>h('li',null,tjPill(ok?'good':'bad',ok?'ok':'falta'),h('span',null,txt));
+  result.replaceChildren(h('div',{class:'tj-ph'},h('h3',null,'Resultado')),
+   h('div',{class:'tj-outro'},h('span',{class:'eyebrow'},'Nota final estimada'),h('div',{class:'tj-big'},fmtN(b+e+disc),h('small',null,' / '+max)),
+    h('span',{class:'muted',style:'font-size:13px'},!any?'Preencha os acertos ao lado.':pass?'Atende todos os critérios mínimos do edital.':'Ainda não atende os critérios mínimos.')),
+   tjTable(['Parte',['Acertos']],[['Conhecimentos Básicos',b+' / '+modulo('I')],['Conhecimentos Específicos',e+' / '+modulo('II')],['Objetiva',(b+e)+' / '+P.total],['Discursiva',fmtN(disc)+' / '+SIM.disc]].map(([l,v])=>h('tr',null,h('td',null,l),h('td',{class:'num'},v)))),
+   h('ul',{class:'tj-crit'},crit(b>=SIM.modulo,'Mínimo de '+SIM.modulo+' em Básicos'),crit(e>=SIM.modulo,'Mínimo de '+SIM.modulo+' em Específicos'),
+    crit(!zeradas.length,zeradas.length?'Matérias zeradas: '+zeradas.join(', '):'Nenhuma matéria zerada'),crit(disc>=SIM.discMin,'Mínimo de '+SIM.discMin+' na discursiva')),
+   h('p',{class:'muted tj-note'},'Passar nos mínimos não garante classificação: em 2022 só as 1.053 melhores objetivas da ampla concorrência tiveram a discursiva corrigida.'))};
+ const linha=(id,label,max,value,step,set)=>h('div',{class:'tj-sim'},h('label',{for:id},label),
+  h('input',{class:'inp',id,type:'number',min:'0',max:String(max),step:String(step),inputmode:'decimal',placeholder:'0',value:value==null?'':String(value),
+   oninput:ev=>{const raw=ev.target.value,v=raw===''?null:Math.max(0,Math.min(max,(step<1?parseFloat(raw):parseInt(raw,10))||0));if(v!=null&&v!==Number(raw))ev.target.value=v;set(v);save(P.id);draw()}}),
+  h('span',{class:'muted'},'/ '+max));
+ const campos=P.edital.map(b=>[h('span',{class:'eyebrow'},P.blocoLabel(b)+' · '+b.nome),
+  b.materias.map(m=>linha('sim-'+m.id,m.nome,m.peso,T.sim[m.id],1,v=>{if(v==null)delete T.sim[m.id];else T.sim[m.id]=v}))]);
+ draw();
+ return h('div',{class:'tj-stack'},
+  h('div',{class:'tj-mhead'},h('div',null,h('span',{class:'eyebrow'},'Prova objetiva + discursiva'),h('h2',null,'Simulado')),h('span',{class:'badge'},P.total+' questões + '+SIM.disc+' pontos')),
+  h('div',{class:'tj-grid2',style:'align-items:start'},
+   tjPanel('Seus acertos',null,h('p',{class:'muted tj-note'},'Digite os acertos de um simulado no formato da prova. Regras do item 9.6.12 do edital: 50% em cada módulo e nenhuma disciplina zerada; na discursiva, pelo menos 50%.'),
+    campos,linha('simDisc','Discursiva (mínimo '+SIM.discMin+')',SIM.disc,T.simDisc,0.5,v=>{T.simDisc=v}),
+    h('button',{type:'button',class:'btn btn-ghost btn-sm',style:'align-self:flex-start',onclick:()=>{T.sim={};T.simDisc=null;save(P.id);rerender()}},'Limpar')),
+   result))}
+function rfbEdital(){
+ const el=h('div',{class:'tj-stack tj-edital',html:PD.rfb.EDITAL_HTML});   /* HTML fixo do próprio app */
+ for(const a of el.querySelectorAll('a')){a.target='_blank';a.rel='noopener noreferrer'}
+ const t=el.querySelector('table[data-pesos]');
+ if(t)t.replaceChildren(h('thead',null,h('tr',null,h('th',null,'Disciplina'),h('th',null,'Módulo'),h('th',{class:'num'},'Questões'),h('th',{class:'num'},'% da prova'))),
+  h('tbody',null,P.mats.map(m=>h('tr',null,h('td',null,m.nome),h('td',null,m.bloco+' · '+(m.bloco==='I'?'Básicos':'Específicos')),h('td',{class:'num'},String(m.peso)),h('td',{class:'num'},(m.peso/P.total*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%'))),
+   h('tr',{class:'tj-bloco'},h('td',null,'Total'),h('td'),h('td',{class:'num'},String(P.total)),h('td',{class:'num'},'100%'))));
+ return el}
+
+/* ----- página de um concurso ----- */
+function viewPanel(X){
+ P=PANELS[X.id];
+ const T=tjT(),g=tjGeral(),left=daysLeft(X),extra=P.extraTabs.find(t=>t.id===tjTab);
+ if(tjTab!=='painel'&&!P.mat[tjTab]&&!extra)tjTab='painel';
+ const items=[{id:'painel',name:'Painel'},...P.mats.map(m=>({id:m.id,name:tjShort(m)})),...P.extraTabs.map(({id,name})=>({id,name}))];
  return h('div',{class:'page'},
-  head('Concurso',[h('em',null,X.name||'TJSP')],[h('button',{class:'btn btn-ghost',onclick:()=>{examSel=null;rerender();goTop()}},'‹ Concursos')]),
+  head('Concurso',[h('em',null,X.name||'Sem nome')],[h('button',{class:'btn btn-ghost',onclick:()=>{examSel=null;rerender();goTop()}},'‹ Concursos')]),
   h('div',{class:'row'},
    h('span',{class:'badge'},left==null?'Sem data da prova':left<0?'Prova já realizada':left===0?'A prova é hoje':left+(left===1?' dia':' dias')+' para a prova'),
-   h('span',{class:'badge'},g.top+' de '+TJ_TOP+' tópicos estudados')),
+   h('span',{class:'badge'},g.top+' de '+P.topicos+' tópicos estudados')),
   h('div',{class:'card tj-config'},h('div',{class:'tj-config-row'},
    field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
-   field('Meta de acerto (%)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(T.meta),onchange:e=>{T.meta=Math.min(100,Math.max(0,parseInt(e.target.value,10)||0));save('tjsp');rerender()}})))),
-  tabs(items,tjTab,'Painel e matérias do TJSP',(id,fid)=>{tjTab=id;tjFilter='';rerender(fid);goTop()}),
-  tjTab==='painel'?tjPainel():tjMateria(TJ_MAT[tjTab]))}
+   field('Meta de acerto (%)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(T.meta),onchange:e=>{T.meta=Math.min(100,Math.max(0,parseInt(e.target.value,10)||0));save(P.id);rerender()}})),
+   P.estimada&&!X.date?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{X.date=P.estimada;save('study');rerender()}},'Usar data estimada ('+tjDate(P.estimada)+')'):null)),
+  tabs(items,tjTab,'Painel e matérias do concurso',(id,fid)=>{tjTab=id;tjFilter='';rerender(fid);goTop()}),
+  tjTab==='painel'?tjPainel():P.mat[tjTab]?tjMateria(P.mat[tjTab]):P.extraTabs.find(t=>t.id===tjTab).view(),
+  P.fonte.map(f=>h('p',{class:'muted tj-note'},f)))}
 
 /* ---------- rotas ---------- */
 const VIEWS={inicio:viewInicio,wishlists:viewWishlists,objetivos:viewObjetivos,planner:viewPlanner,concurso:viewConcurso};

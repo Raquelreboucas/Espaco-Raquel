@@ -110,7 +110,7 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
   const second = await signup(b, 'outra@exemplo.com');
   assert.equal(second.json.user.seed, false);
 
-  const nulls = { wishlist: null, goals: null, planner: null, study: null, tjsp: null, board: null };
+  const nulls = { wishlist: null, goals: null, planner: null, study: null, tjsp: null, inss: null, rfb: null, board: null };
   assert.deepEqual((await a.get('/api/state')).json.sections, nulls);
 
   const data = {
@@ -141,6 +141,14 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
       revisados: { 'pen-0': '2026-11-22' },
       registros: [{ id: 'q1', m: 'pen', d: '2026-11-22', f: 20, a: 15, t: 0, n: 'Vunesp 2023' }, { id: 'q2', m: 'pt', d: '2026-11-22', f: 10, a: 4 }],
       meta: 75,
+    },
+    inss: {
+      topicos: { 'prev-0': '2026-11-20' }, revisados: {},
+      registros: [{ id: 'q1', m: 'prev', d: '2026-11-22', f: 10, a: 8, t: 3 }], meta: 70,
+    },
+    rfb: {
+      topicos: { 'legtrib-2': '2026-11-21' }, revisados: { 'legtrib-2': '2026-11-22' },
+      registros: [{ id: 'q1', m: 'port', d: '2026-11-22', f: 5, a: 5 }], meta: 85, sim: { port: 12, trib: 0 }, simDisc: 17.5,
     },
     board: {
       items: [
