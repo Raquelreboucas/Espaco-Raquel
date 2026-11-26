@@ -6,14 +6,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from './db.js';
 import { createHandler } from './app.js';
+import { startFakeRedis } from './fake-redis.js';
 
 const start = async () => {
   const dir = mkdtempSync(join(tmpdir(), 'espaco-'));
-  const store = await openDb({ url: 'file:' + join(dir, 'test.db').replaceAll('\\', '/') });
+  let fake;
+  if (process.env.TEST_BACKEND === 'redis') {
+    fake = await startFakeRedis();
+    delete process.env.DATABASE_URL;
+    process.env.KV_REST_API_URL = fake.url;
+    process.env.KV_REST_API_TOKEN = fake.token;
+  }
+  const store = await openDb(fake ? {} : { url: 'file:' + join(dir, 'test.db').replaceAll('\\', '/') });
   const server = createServer(createHandler(async () => store));
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { base, stop: () => { server.closeAllConnections(); server.close(); store.close(); try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows pode manter o arquivo preso */ } } };
+  return { base, stop: () => {
+    server.closeAllConnections(); server.close(); store.close();
+    if (fake) {
+      assert.deepEqual(fake.keys().filter((k) => !k.startsWith('espaco:')), []); // banco compartilhado: só o prefixo do app
+      fake.stop();
+    }
+    try { rmSync(dir, { recursive: true, force: true }); } catch { /* Windows pode manter o arquivo preso */ }
+  } };
 };
 
 /** Cliente minúsculo que guarda o cookie de sessão. */

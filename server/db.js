@@ -31,9 +31,16 @@ const link = (v) => (/^https?:\/\//i.test(String(v ?? '')) ? str(v, 2000) : '');
 
 /**
  * Local: DATABASE_URL=file:data/meu-espaco.db (padrão).
- * Produção (Vercel): DATABASE_URL=libsql://...turso.io + DATABASE_AUTH_TOKEN.
+ * Produção (Vercel), uma das opções:
+ *   - Redis: KV_REST_API_URL + KV_REST_API_TOKEN (criadas ao conectar o banco ao projeto);
+ *   - Turso: DATABASE_URL=libsql://...turso.io + DATABASE_AUTH_TOKEN (tem prioridade sobre o Redis).
  */
 export async function openDb({ url, authToken } = {}) {
+  const { DATABASE_URL, KV_REST_API_URL, KV_REST_API_TOKEN } = process.env;
+  if (!url && !DATABASE_URL && KV_REST_API_URL && KV_REST_API_TOKEN) {
+    const { openRedis } = await import('./redis.js');
+    return openRedis({ url: KV_REST_API_URL, token: KV_REST_API_TOKEN, sections: SECTIONS, openScratch: () => openDb({ url: ':memory:' }) });
+  }
   url = url || process.env.DATABASE_URL || 'file:' + join(here, '..', 'data', 'meu-espaco.db');
   authToken = authToken || process.env.DATABASE_AUTH_TOKEN || undefined;
   if (url.startsWith('file:') && !url.includes(':memory:')) mkdirSync(dirname(url.slice(5)), { recursive: true });

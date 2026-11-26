@@ -19,32 +19,35 @@ A **primeira conta criada** recebe a lista de eletrodomésticos da categoria Cas
 
 ## Publicar na Vercel
 
-A Vercel não guarda arquivos entre execuções, então o arquivo SQLite local não serve lá. Em produção o app usa o [Turso](https://turso.tech) (SQLite na nuvem, plano gratuito). O código é o mesmo.
+A Vercel não guarda arquivos entre execuções, então o arquivo SQLite local não serve lá. Em produção o app usa um banco externo: **Redis** ou **Turso**. Na Vercel, importe este repositório do GitHub (não precisa configurar build) e escolha uma das opções.
 
-1. Crie um banco no Turso e pegue a URL (`libsql://...`) e o token:
-   ```
-   turso db create espaco
-   turso db show espaco --url
-   turso db tokens create espaco
-   ```
-2. Na Vercel, importe este repositório do GitHub. Não precisa configurar build.
-3. Em Settings → Environment Variables, adicione:
+### Opção 1: Redis (pode ser um banco já usado por outros projetos)
 
-   | Variável | Valor |
-   |---|---|
-   | `DATABASE_URL` | a URL `libsql://...` |
-   | `DATABASE_AUTH_TOKEN` | o token do Turso |
-   | `ALLOW_SIGNUP` | `false` (depois de criar a sua conta) |
+1. Em Storage, abra o banco Redis (Upstash) e clique em **Connect Project**.
+2. Escolha o projeto e mantenha o prefixo `KV`. A Vercel cria `KV_REST_API_URL` e `KV_REST_API_TOKEN`.
 
-4. Faça o deploy, abra o endereço e crie a sua conta. Depois coloque `ALLOW_SIGNUP=false` e faça um novo deploy, para que ninguém mais consiga se cadastrar.
+Todas as chaves do app começam com `espaco:`. O prefixo organiza, mas não protege: quem tem o token do banco lê tudo. Deixe a opção **Eviction** desligada, para o banco não apagar dados quando encher.
 
-Limite da Vercel: cada gravação envia uma seção inteira, e o corpo do pedido pode ter até 4,5 MB. Muitas fotos grandes numa mesma wishlist podem passar disso.
+### Opção 2: Turso (SQLite na nuvem)
+
+1. Crie um banco no [Turso](https://turso.tech) e pegue a URL (`libsql://...`) e o token.
+2. Em Settings → Environment Variables, adicione `DATABASE_URL` e `DATABASE_AUTH_TOKEN`.
+
+Se `DATABASE_URL` existir, ela tem prioridade sobre o Redis. Trocar de banco não copia os dados.
+
+### Depois de conectar
+
+1. Faça um novo deploy e abra `/api/health`: a resposta `{"ok":true}` indica que o banco conectou.
+2. Crie a sua conta.
+3. Adicione `ALLOW_SIGNUP=false` e faça outro deploy, para que ninguém mais consiga se cadastrar.
+
+Limite da Vercel: cada gravação envia uma seção inteira, e o corpo do pedido pode ter até 4,5 MB. Muitas fotos grandes podem passar disso, e o plano do banco também tem limites próprios de tamanho.
 
 ## Como funciona
 
 ```
 public/   index.html, styles.css, app.js (o front-end)
-server/   app.js (rotas, login), auth.js (senhas), db.js (banco), schema.sql (tabelas)
+server/   app.js (rotas, login), auth.js (senhas), db.js (banco SQLite/Turso), redis.js (banco Redis), schema.sql (tabelas)
 api/      index.js (entrada da Vercel)
 ```
 
