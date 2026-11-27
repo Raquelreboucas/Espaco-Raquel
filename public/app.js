@@ -11,7 +11,7 @@ const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
-const sunday=d=>{const x=new Date(d);x.setDate(x.getDate()-x.getDay());x.setHours(0,0,0,0);return x};
+const monday=d=>{const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));x.setHours(0,0,0,0);return x};
 const fmt=(o)=>new Intl.DateTimeFormat('pt-BR',o);
 const brl=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const todayIso=()=>iso(new Date());
@@ -30,6 +30,7 @@ const ICONS={
  link:'<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>',
  trash:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
  edit:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+ back:'<svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
  chev:'<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
  next:'<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'
 };
@@ -166,7 +167,7 @@ function showAuth(msg){
 function modal(title,build,opts={}){
  const prev=document.activeElement;
  const err=h('p',{class:'err',style:'display:none',role:'alert'});
- const form=h('form',{class:'modal',role:'dialog','aria-modal':'true','aria-label':title});
+ const form=h('form',{class:'modal'+(opts.wide?' modal-wide':''),role:'dialog','aria-modal':'true','aria-label':title});
  const close=()=>{veil.remove();document.removeEventListener('keydown',esc);if(prev&&prev.focus)prev.focus()};
  const esc=e=>{if(e.key==='Escape')close()};
  const fields=build(err);
@@ -179,6 +180,7 @@ function modal(title,build,opts={}){
   const r=opts.onSubmit(new FormData(form),m=>{err.textContent=m;err.style.display='block'});
   if(r!==false)close()});
  const veil=h('div',{class:'veil',onmousedown:e=>{if(e.target===veil)close()}},form);
+ for(const t of['dragover','drop'])veil.addEventListener(t,e=>{if(!e.defaultPrevented){e.preventDefault();if(t==='dragover')e.dataTransfer.dropEffect='none'}});
  document.body.append(veil);document.addEventListener('keydown',esc);
  const f=form.querySelector('input,select,textarea');if(f)f.focus();
 }
@@ -233,14 +235,15 @@ function tabs(items,cur,label,onSelect){
  list.addEventListener('scroll',update,{passive:true});
  requestAnimationFrame(()=>{
   const sel=list.querySelector('[aria-selected="true"]');
-  if(sel){if(sel.offsetLeft<list.scrollLeft)list.scrollLeft=sel.offsetLeft-8;else if(sel.offsetLeft+sel.offsetWidth>list.scrollLeft+list.clientWidth)list.scrollLeft=sel.offsetLeft+sel.offsetWidth-list.clientWidth+8}
-  update();
+  /* as setas mudam a largura da lista: primeiro elas aparecem, depois a aba ativa é trazida para a vista */
+  const show=()=>{if(!sel)return;const a=sel.getBoundingClientRect(),b=list.getBoundingClientRect();if(a.left<b.left)list.scrollLeft-=b.left-a.left+8;else if(a.right>b.right)list.scrollLeft+=a.right-b.right+8};
+  show();update();show();update();
   if(window.ResizeObserver)new ResizeObserver(update).observe(list)});
  return h('div',{class:'ds-tabs-wrap'},prev,list,next)}
-function shrink(file,max=480){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();
- im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
-  c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',0.82))};
- im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Não foi possível ler a imagem.'))};im.src=u})}
+/* a política de segurança só libera imagens "data:", por isso o arquivo é lido assim (blob: é bloqueado) */
+function shrink(file,max=480){return new Promise((res,rej)=>{const r=new FileReader();
+ r.onload=()=>shrinkUrl(r.result,max).then(res,()=>rej(new Error('Não foi possível ler a imagem.')));
+ r.onerror=()=>rej(new Error('Não foi possível ler a imagem.'));r.readAsDataURL(file)})}
 function shrinkUrl(src,max=480){return new Promise((res,rej)=>{const im=new Image();
  im.onload=()=>{const k=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.82))};
@@ -278,9 +281,17 @@ function uploadField(label,state,alt,fail,max){
   ed=h('div');
  const draw=()=>{thumb.replaceChildren();if(state.img)thumb.append(h('img',{src:state.img,alt:alt||'Foto do item'}));else thumb.append('▢');
   pick.textContent=state.img?'Trocar foto':'Escolher foto';rm.style.display=state.img?'':'none';adj.style.display=state.img?'':'none'};
- file.addEventListener('change',async()=>{const f=file.files[0];if(!f)return;try{state.img=await shrink(f,max)}catch(e){fail&&fail(e.message)}draw()});
+ const load=async f=>{if(!f)return;if(!String(f.type).startsWith('image/')){fail&&fail('Esse arquivo não é uma imagem.');return}try{state.img=await shrink(f,max);ed.replaceChildren()}catch(e){fail&&fail(e.message)}draw()};
+ file.addEventListener('change',()=>{load(file.files[0]);file.value=''});
  draw();state.redraw=draw;
- return h('div',{class:'ds-field'},h('span',{class:'ds-label',style:'font-size:14px;font-weight:600'},label),h('div',{class:'ds-upload'},thumb,h('div',{class:'row'},pick,adj,rm,file),),ed,h('span',{class:'ds-hint'},'JPG ou PNG. A foto é reduzida antes de salvar.'))}
+ return h('div',{class:'ds-field'},h('span',{class:'ds-label',style:'font-size:14px;font-weight:600'},label),dropZone(h('div',{class:'ds-upload'},thumb,h('div',{class:'row'},pick,adj,rm,file)),load),ed,h('span',{class:'ds-hint'},'Arraste uma imagem para a área acima ou escolha o arquivo. JPG ou PNG; a foto é reduzida antes de salvar.'))}
+/* soltar um arquivo na área (sem o navegador abrir a imagem no lugar do app) */
+function dropZone(el,load){
+ const files=e=>[...(e.dataTransfer&&e.dataTransfer.types||[])].includes('Files');
+ el.addEventListener('dragover',e=>{if(!files(e))return;e.preventDefault();e.dataTransfer.dropEffect='copy';el.classList.add('over')});
+ el.addEventListener('dragleave',e=>{if(!el.contains(e.relatedTarget))el.classList.remove('over')});
+ el.addEventListener('drop',e=>{if(!files(e))return;e.preventDefault();el.classList.remove('over');load(e.dataTransfer.files[0])});
+ return el}
 
 /* ---------- helpers de UI ---------- */
 const prog=(v,t)=>h('div',{class:'prog-row'},h('div',{class:'prog',role:'progressbar','aria-valuemin':'0','aria-valuemax':'100','aria-valuenow':String(pct(v,t))},h('i',{style:'width:'+pct(v,t)+'%'})),h('span',null,pct(v,t)+'%'));
@@ -341,13 +352,6 @@ function viewInicio(){
 function goalPct(g){return g.steps.length?pct(g.steps.filter(s=>s.d).length,g.steps.length):(g.done?100:0)}
 
 /* ---------- Wishlists ---------- */
-let wlNote='',wlBusy=false;
-async function bulkImages(items){
- const todo=items.filter(i=>i.link&&!i.img);if(!todo.length||wlBusy){wlNote=wlBusy?'':'Nenhum desejo com link e sem foto nesta categoria.';rerender();return}
- wlBusy=true;let ok=0;
- for(let n=0;n<todo.length;n++){wlNote='Buscando fotos… '+(n+1)+' de '+todo.length;rerender();
-  try{todo[n].img=await fetchLinkImage(todo[n].link);ok++;save('wishlist')}catch(e){}}
- wlBusy=false;wlNote=ok+' de '+todo.length+(todo.length===1?' foto encontrada.':' fotos encontradas.')+(ok<todo.length?' As outras lojas não informam foto. Escolha manualmente no botão de editar.':'');rerender()}
 let wlFilter='all',wlShowDone=true,wlView='cartoes',seededMsg='';
 const SEED_ID='eletros-2026-11';
 const SEED=[
@@ -371,9 +375,10 @@ function migrateCats(W){
  W.cats=W.cats.filter(c=>!(['livros','viagens'].includes(c.name.trim().toLowerCase())&&!W.items.some(i=>i.cat===c.id)));
  for(const[n,t]of[['Casa','mint'],['Moda','pink'],['Beleza','peach'],['Tecnologia','neutral']])if(!W.cats.some(c=>c.name.trim().toLowerCase()===n.toLowerCase()))W.cats.push({id:uid(),name:n,tone:t});
  W.seeds.push('cats-4');save('wishlist')}
+/* o "foco da semana" é guardado pela data em que a semana começa: textos salvos num domingo passam para a segunda */
 function migrateFocus(){
  const F=S.planner&&S.planner.focus;if(!F||typeof F!=='object')return;let ch=false;
- for(const k of Object.keys(F)){const d=parse(k);if(d.getDay()===1){const nk=iso(addDays(d,-1));if(!F[nk])F[nk]=F[k];delete F[k];ch=true}}
+ for(const k of Object.keys(F)){const d=parse(k);if(d.getDay()===0){const nk=iso(addDays(d,1));if(!F[nk])F[nk]=F[k];delete F[k];ch=true}}
  if(ch)save('planner')}
 function migrateStudy(){
  const X=S.study;if(isArr(X.exams))return;
@@ -419,7 +424,7 @@ function applyMigrations(){
 function itemModal(it){
  const cats=S.wishlist.cats;if(!cats.length){modal('Sem categorias',()=>h('p',null,'Crie uma categoria antes de adicionar desejos.'),{onSubmit:()=>true,submit:'Ok'});return}
  const isNew=!it;it=it||{id:uid(),cat:wlFilter!=='all'?wlFilter:cats[0].id,name:'',brand:'',room:'',price:null,link:'',img:'',prio:'media',note:'',done:false};
- const st={img:it.img||''};
+ const st={img:it.img||''},oldLink=it.link||'';
  let curCat=it.cat,subVal=it.room||'';
  const subsOf=c=>[...new Set(S.wishlist.items.filter(i=>i.cat===c).map(i=>i.room).filter(Boolean))];
  const newSub=h('input',{class:'inp',name:'room_new',placeholder:'Nome da nova subcategoria',maxLength:60,autocomplete:'off'});
@@ -459,9 +464,10 @@ function itemModal(it){
    const price=toNum(fd.get('price'));if(Number.isNaN(price)){fail('Preço inválido. Use números, como 129,90.');return false}
    const raw=String(fd.get('link')).trim(),link=normUrl(raw);if(raw&&!link){fail('Link inválido. Cole o endereço completo da loja.');return false}
    Object.assign(it,{name,brand:String(fd.get('brand')).trim(),room:(fd.get('room')==='__new'?String(fd.get('room_new')||''):String(fd.get('room')||'')).trim().slice(0,60),cat:fd.get('cat'),prio:fd.get('prio'),price,link,img:st.img,note:String(fd.get('note')).trim(),done:fd.get('done')==='sim',box:catHasBox(fd.get('cat'))?fd.get('box')==='sim':true});
-   if(isNew)S.wishlist.items.push(it);save('wishlist');rerender()},
+   if(isNew)S.wishlist.items.push(it);save('wishlist');rerender();
+   if(link&&link!==oldLink&&!it.img)fetchLinkImage(link).then(img=>{if(!it.img&&it.link===link){it.img=img;save('wishlist');rerender()}}).catch(()=>{})},
   onDelete:isNew?null:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==it.id);save('wishlist');rerender()},
-  submit:isNew?'Adicionar':'Salvar'});
+  submit:isNew?'Adicionar':'Salvar',wide:true});
 }
 function catModal(c){
  const isNew=!c;c=c||{id:uid(),name:'',tone:'mint',note:''};
@@ -469,7 +475,7 @@ function catModal(c){
   field('Nome',h('input',{class:'inp',name:'name',value:c.name,maxLength:40,autocomplete:'off'})),toneSwatches(c.tone),
   field('Observação da categoria',h('textarea',{class:'inp',name:'note',maxLength:300},c.note||''))),{
   onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome da categoria.');return false}
-   c.name=name;c.tone=fd.get('tone');c.note=String(fd.get('note')).trim();if(isNew)S.wishlist.cats.push(c);save('wishlist');rerender()},
+   c.name=name;c.tone=fd.get('tone');c.note=String(fd.get('note')).trim();if(isNew){S.wishlist.cats.push(c);wlFilter=c.id}save('wishlist');rerender()},
   onDelete:isNew?null:(err)=>{if(S.wishlist.items.some(i=>i.cat===c.id)||S.wishlist.deposits.some(d=>d.cat===c.id)){err.textContent='Mova ou exclua os desejos e os valores da caixinha desta categoria antes de excluí-la.';err.style.display='block';return false}
    S.wishlist.cats=S.wishlist.cats.filter(x=>x.id!==c.id);if(wlFilter===c.id)wlFilter='all';save('wishlist');rerender()},
   submit:isNew?'Criar':'Salvar'});
@@ -523,7 +529,8 @@ function phArt(name){const n=String(name||'').toLowerCase();const r=PH_RULES.fin
 function wlCard(i,cname){
  const c=cname(i.cat),[pl,pc]=PRIO[i.prio]||PRIO.media;
  const fl=(k,v)=>h('div',{style:'display:flex;flex-direction:column;gap:2px;min-width:0'},h('span',{class:'muted',style:'font-size:12px;font-weight:700'},k),v);
- return h('article',{class:'tile tone-'+c.tone+(i.done?' tile-done':'')},
+ /* clicar no card abre a edição; links, botões e a caixa "Comprei?" continuam com a própria função */
+ return h('article',{class:'tile tile-click tone-'+c.tone+(i.done?' tile-done':''),onclick:e=>{if(!e.target.closest('a,button,input,label'))itemModal(i)}},
   h('div',{class:'tile-media'},
    i.img?h('img',{class:'tile-img',src:i.img,alt:i.name}):h('div',{class:'tile-ph',html:phArt(i.name+' '+(i.brand||'')),'aria-hidden':'true'}),
    i.room?h('div',{class:'tile-badges'},h('span',{class:'badge badge-sub'},i.room)):null),
@@ -533,16 +540,11 @@ function wlCard(i,cname){
    fl('Preço estimado (R$)',h('strong',null,i.price!=null?num.format(i.price):'—')),
    h('div',{class:'row'},h('span',{class:'badge '+pc},'Prioridade '+pl.toLowerCase())),
    i.note?h('p',{class:'muted',style:'margin:0;overflow-wrap:anywhere'},i.note):null,
-   i.link?h('a',{class:'link-ico',href:i.link,target:'_blank',rel:'noopener noreferrer'},h('span',{html:ICONS.link,'aria-hidden':'true'}),'Abrir produto'):h('button',{type:'button',class:'btn btn-ghost btn-sm',style:'align-self:flex-start',onclick:()=>linkModal(i)},'+ Adicionar link')),
+   i.link?h('a',{class:'link-ico',href:i.link,target:'_blank',rel:'noopener noreferrer'},h('span',{html:ICONS.link,'aria-hidden':'true'}),'Abrir produto'):null),
   h('div',{class:'tile-foot'},
    h('label',{class:'row',style:'gap:8px;font-size:14px;font-weight:600;cursor:pointer'},
     checkbox(i.done,'Comprei '+i.name,e=>{i.done=e.target.checked;save('wishlist');rerender()}),'Comprei?'),
    h('span',{class:'sp'}),h('button',{class:'icon-btn','aria-label':'Editar '+i.name,onclick:()=>itemModal(i),html:ICONS.edit}),h('button',{class:'icon-btn','aria-label':'Excluir '+i.name,onclick:()=>delItem(i),html:ICONS.trash})))}
-function linkModal(i){
- modal('Link do produto',()=>field('Endereço da loja',h('input',{class:'inp',name:'link',value:i.link||'',placeholder:'https://',autocomplete:'off',inputmode:'url'})),{
-  onSubmit(fd,fail){const raw=String(fd.get('link')).trim(),link=normUrl(raw);if(!link){fail('Cole o endereço completo da loja, como https://loja.com/produto.');return false}
-   i.link=link;save('wishlist');rerender();
-   if(!i.img)fetchLinkImage(link).then(img=>{if(!i.img&&i.link===link){i.img=img;save('wishlist');rerender()}}).catch(()=>{})},submit:'Salvar link'})}
 function delItem(i){
  modal('Excluir desejo?',()=>h('p',{style:'margin:0'},'“'+i.name+'” será removido da lista.'),{submit:'Excluir',onSubmit:()=>{S.wishlist.items=S.wishlist.items.filter(x=>x.id!==i.id);save('wishlist');rerender()}})}
 function wlCards(items,cname){
@@ -591,17 +593,14 @@ function viewWishlists(){
  const count=id=>W.items.filter(i=>(id==='all'||i.cat===id)&&!i.done).length;
  const cur=W.cats.find(c=>c.id===wlFilter);
  return h('div',{class:'page'},
-  head('Lista de desejos',['Minhas ',h('em',null,'wishlists')],[h('button',{class:'btn btn-ghost',onclick:()=>catModal()},'+ Categoria'),h('button',{class:'btn btn-primary',onclick:()=>itemModal()},'+ Novo desejo')]),
-  wlNote?h('p',{class:'callout',role:'status'},wlNote):null,
-  h('div',{class:'hd-row'},tabs(W.cats.map(c=>({id:c.id,name:c.name,count:count(c.id)})),wlFilter,'Categorias',(id,fid)=>{wlFilter=id;rerender(fid)}),
-   cur?h('button',{class:'icon-btn','aria-label':'Editar categoria '+cur.name,onclick:()=>catModal(cur),html:ICONS.edit}):null),
+  head('Lista de desejos',['Minhas ',h('em',null,'wishlists')],[cur?h('a',{class:'edit-link',href:'#wishlists','aria-label':'Editar categoria '+cur.name,onclick:e=>{e.preventDefault();catModal(cur)}},h('span',{html:ICONS.edit,style:'display:contents','aria-hidden':'true'}),'Editar categoria'):null,h('button',{class:'btn btn-ghost',onclick:()=>catModal()},'+ Categoria'),h('button',{class:'btn btn-primary',onclick:()=>itemModal()},'+ Novo desejo')]),
+  tabs(W.cats.map(c=>({id:c.id,name:c.name,count:count(c.id)})),wlFilter,'Categorias',(id,fid)=>{wlFilter=id;rerender(fid)}),
   cur?catTotals(W.items.filter(i=>i.cat===cur.id),cur):null,
   h('div',{class:'row'},
-   h('button',{class:'chip',disabled:wlBusy,onclick:()=>bulkImages(W.items.filter(i=>i.cat===wlFilter))},wlBusy?'Buscando…':'Buscar fotos dos links'),
    h('div',{class:'row',role:'group','aria-label':'Visualização'},
     h('button',{class:'chip','aria-pressed':String(wlView==='tabela'),onclick:()=>{wlView='tabela';rerender()}},'Tabela'),
     h('button',{class:'chip','aria-pressed':String(wlView==='cartoes'),onclick:()=>{wlView='cartoes';rerender()}},'Cartões')),
-   
+ 
    h('label',{class:'row',style:'margin-left:auto;font-size:14px;font-weight:600;gap:8px'},h('input',{type:'checkbox',class:'check',checked:wlShowDone,onchange:e=>{wlShowDone=e.target.checked;rerender()}}),'Mostrar comprados')),
   wlView==='tabela'?(items.length?wlTable(items):null):
   wlCards(cardItems,cname),
@@ -610,47 +609,105 @@ function viewWishlists(){
 }
 
 /* ---------- Objetivos ---------- */
-const expanded=new Set();
-let goalArea=null;
+let editing=null;   /* rascunho do item em edição (só um por vez); nada muda até salvar */
+let goalArea=null;   /* null = cards das categorias; id = página de uma categoria */
+const doneCount=gs=>gs.filter(g=>goalPct(g)===100).length;
+function openArea(id){goalArea=id;editing=null;rerender();goTop()}
+function areaModal(a){
+ const st={img:a.img||''};
+ modal('Editar categoria',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
+  field('Nome',h('input',{class:'inp',name:'name',value:a.name,maxLength:60,autocomplete:'off'})),
+  uploadField('Imagem de capa',st,a.name,m=>{const e=document.querySelector('.modal .err');if(e){e.textContent=m;e.style.display='block'}},1200),
+  toneSwatches(a.tone)),{
+  onSubmit(fd,fail){const name=String(fd.get('name')).trim();if(!name){fail('Escreva o nome da categoria.');return false}
+   const prev={...a};Object.assign(a,{name,tone:fd.get('tone'),img:st.img});
+   if(JSON.stringify(S.goals).length>BOARD_MAX){Object.assign(a,{img:prev.img||'',name:prev.name,tone:prev.tone});fail('As imagens ocupam espaço demais. Use uma foto menor ou remova outra capa.');return false}
+   save('goals');rerender()}})}
+/* capa no topo da página, como no Notion: botão ou arrastar uma imagem */
+async function setCover(a,file){
+ if(!file)return;
+ try{
+  if(!String(file.type).startsWith('image/'))throw new Error('Esse arquivo não é uma imagem.');
+  const prev=a.img||'';a.img=await shrink(file,1200);
+  if(JSON.stringify(S.goals).length>BOARD_MAX){a.img=prev;throw new Error('As capas ocupam espaço demais. Use uma foto menor ou remova outra capa.')}
+  save('goals');rerender()
+ }catch(e){modal('Capa não adicionada',()=>h('p',{style:'margin:0'},e.message),{submit:'Ok',onSubmit:()=>true})}}
+function areaCover(a){
+ const file=h('input',{type:'file',accept:'image/*',style:'display:none','aria-label':'Imagem de capa',onchange:()=>setCover(a,file.files[0])});
+ return dropZone(h('div',{class:'area-cover tone-'+a.tone},
+  a.img?h('img',{src:a.img,alt:'Capa de '+a.name}):h('span',{class:'area-cover-hint'},'Arraste uma imagem para cá'),
+  h('div',{class:'area-cover-acts'},
+   h('button',{type:'button',onclick:()=>file.click()},a.img?'Alterar capa':'Adicionar capa'),
+   a.img?h('button',{type:'button',onclick:()=>{a.img='';save('goals');rerender()}},'Remover'):null,file)),f=>setCover(a,f))}
+function areaCard(a){
+ const gs=S.goals.items.filter(g=>g.area===a.id),n=doneCount(gs);
+ return h('button',{type:'button',class:'area-card tone-'+a.tone+(a.img?' has-img':''),onclick:()=>openArea(a.id)},
+  a.img?h('img',{src:a.img,alt:''}):null,
+  h('span',{class:'area-info'},h('strong',null,a.name),
+   h('span',null,gs.length?n+' de '+gs.length+(gs.length===1?' concluído':' concluídos'):'Nenhum item ainda'),
+   gs.length?h('span',{class:'area-prog'},h('i',{style:'width:'+pct(n,gs.length)+'%'})):null))}
 function viewObjetivos(){
- const G=S.goals,all=G.items,done=all.filter(g=>goalPct(g)===100).length;
- if(!G.areas.some(a=>a.id===goalArea))goalArea=(G.areas[0]||{}).id;
- const a=G.areas.find(x=>x.id===goalArea);
- const gs=a?all.filter(g=>g.area===a.id):[];
- const inpId='ng-'+(a?a.id:'x');
- const addGoal=()=>{const el=document.getElementById(inpId),v=el.value.trim();if(!v)return;G.items.push({id:uid(),area:a.id,title:v,due:'',done:false,steps:[]});save('goals');rerender(inpId)};
+ const G=S.goals,a=G.areas.find(x=>x.id===goalArea);
+ if(a)return viewArea(a);
+ goalArea=null;
  return h('div',{class:'page'},
   head('Vision board',['Meus ',h('em',null,'objetivos')]),
-  h('div',{class:'row'},h('span',{class:'badge'},done+' de '+all.length+' concluídos')),
-  tabs(G.areas.map(x=>({id:x.id,name:x.name,count:all.filter(g=>g.area===x.id).length})),goalArea,'Áreas dos objetivos',(id,fid)=>{goalArea=id;rerender(fid)}),
-  a?h('section',{class:'tile tone-'+a.tone,style:'min-width:0;max-width:720px','aria-label':a.name},
-   h('div',{class:'tile-top'},h('span',null,a.name),h('span',null,gs.filter(g=>goalPct(g)===100).length+'/'+gs.length)),
-   h('div',{class:'tile-body',style:'gap:var(--space-3)'},
-    gs.length?null:h('p',{class:'empty'},'Sem objetivos nesta área.'),
-    gs.map(g=>goalNode(g)),
-    h('div',{class:'add'},h('input',{class:'inp',id:inpId,placeholder:'Novo objetivo',maxLength:140,autocomplete:'off','aria-label':'Novo objetivo em '+a.name,onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();addGoal()}}}),h('button',{class:'btn btn-ghost',onclick:addGoal},'Adicionar')))):null);
-}
+  h('div',{class:'row'},h('span',{class:'badge'},doneCount(G.items)+' de '+G.items.length+' concluídos')),
+  h('div',{class:'area-grid'},G.areas.map(areaCard)))}
+function viewArea(a){
+ const G=S.goals,gs=G.items.filter(g=>g.area===a.id),n=doneCount(gs);
+ /* os campos são lidos pelas próprias variáveis: field() troca o id do elemento */
+ const title=h('input',{class:'inp',placeholder:'Novo item',maxLength:140,autocomplete:'off','aria-label':'Título do novo item'});
+ const desc=h('textarea',{class:'inp',rows:1,placeholder:'Descrição (opcional)',maxLength:1000,'aria-label':'Descrição do novo item'});
+ const add=()=>{const v=title.value.trim();if(!v){title.focus();return}
+  G.items.push({id:uid(),area:a.id,title:v,desc:desc.value.trim(),due:'',done:false,steps:[]});save('goals');rerender();
+  const next=$('main .todo-add input');if(next)next.focus({preventScroll:true})};
+ return h('div',null,areaCover(a),h('div',{class:'page'},
+  h('div',null,
+   h('a',{class:'back-link',href:'#objetivos',onclick:e=>{e.preventDefault();openArea(null)}},h('span',{html:ICONS.back,style:'display:contents','aria-hidden':'true'}),'Objetivos'),
+   head('Objetivo',[a.name],[h('a',{class:'edit-link',href:'#objetivos',onclick:e=>{e.preventDefault();areaModal(a)}},h('span',{html:ICONS.edit,style:'display:contents','aria-hidden':'true'}),'Editar categoria')])),
+  h('section',{class:'card todo','aria-label':'Checklist de '+a.name},
+   gs.length?h('div',{class:'row'},h('span',{class:'badge'},n+' de '+gs.length+' concluídos')):null,
+   gs.length?prog(n,gs.length):null,
+   gs.length?h('div',{class:'todo-list'},gs.map(g=>goalNode(g))):h('p',{class:'empty'},'Nenhum item nesta categoria ainda.')),
+  h('form',{class:'todo-add',onsubmit:e=>{e.preventDefault();add()}},
+    h('div',{class:'todo-fields'},title,desc),
+    h('button',{type:'submit',class:'btn btn-primary'},'Adicionar'))))}
 function goalNode(g){
- const open=expanded.has(g.id),p=goalPct(g);
- const stepInp='ns-'+g.id;
- const addStep=()=>{const el=document.getElementById(stepInp),v=el.value.trim();if(!v)return;g.steps.push({id:uid(),t:v,d:false});save('goals');rerender(stepInp)};
- return h('div',{style:'border-top:1px solid var(--line);padding-top:var(--space-3)'},
-  h('div',{class:'li'+(p===100?' done':''),style:'align-items:center'},
+ if(editing&&editing.id===g.id)return goalEditor(g);
+ const p=goalPct(g);
+ return h('div',{class:'todo-row'},
+  h('div',{class:'li'+(p===100?' done':'')},
    g.steps.length?h('span',{class:'badge'+(p===100?'':' peach'),style:'min-width:44px;justify-content:center'},p+'%'):checkbox(g.done,'Concluir '+g.title,e=>{g.done=e.target.checked;save('goals');rerender()}),
-   h('span',{class:'t'},g.title),
-   h('button',{class:'icon-btn','aria-expanded':String(open),'aria-label':(open?'Fechar':'Abrir')+' detalhes de '+g.title,onclick:()=>{open?expanded.delete(g.id):expanded.add(g.id);rerender()},html:ICONS.chev,style:'transform:rotate('+(open?90:0)+'deg)'})),
-  open?h('div',{style:'display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2) 0 0 var(--space-5)'},
-   g.steps.length?prog(g.steps.filter(s=>s.d).length,g.steps.length):null,
-   g.steps.map(s=>h('div',{class:'li'+(s.d?' done':'')},checkbox(s.d,'Concluir etapa '+s.t,e=>{s.d=e.target.checked;save('goals');rerender()}),h('span',{class:'t'},s.t),
-    h('span',{class:'acts'},xbtn('Remover etapa '+s.t,()=>{g.steps=g.steps.filter(x=>x.id!==s.id);save('goals');rerender()})))),
-   h('div',{class:'add'},h('input',{class:'inp',id:stepInp,placeholder:'Nova etapa',maxLength:140,autocomplete:'off','aria-label':'Nova etapa',onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();addStep()}}}),h('button',{class:'btn btn-ghost',onclick:addStep},'Etapa')),
-   h('div',{class:'row'},h('label',{style:'font-size:13px;font-weight:600',for:'due-'+g.id},'Prazo'),
-    h('input',{class:'inp',id:'due-'+g.id,type:'month',value:g.due||'',style:'width:auto;min-height:36px;border-radius:var(--radius-pill);font-size:14px',onchange:e=>{g.due=e.target.value;save('goals')}}),
-    h('button',{class:'btn btn-danger',style:'min-height:36px;margin-left:auto;font-size:13px',onclick:()=>modal('Excluir objetivo?',()=>h('p',{style:'margin:0'},'“'+g.title+'” e suas etapas serão removidos.'),{submit:'Excluir',onSubmit:()=>{S.goals.items=S.goals.items.filter(x=>x.id!==g.id);save('goals');rerender()}})},'Excluir'))):null);
-}
+   h('span',{class:'t'},h('strong',null,g.title),
+    g.desc?h('span',{class:'goal-desc'},g.desc):null,
+    g.due?h('span',{class:'goal-due'},'Prazo: '+fmt({month:'long',year:'numeric'}).format(parse(g.due+'-01'))):null),
+   h('button',{type:'button',class:'icon-btn',id:'edit-'+g.id,'aria-label':'Editar '+g.title,title:'Editar',html:ICONS.edit,
+    onclick:()=>{editing={id:g.id,title:g.title,desc:g.desc||'',due:g.due||'',steps:g.steps.map(x=>({...x})),step:''};rerender('goal-title')}})),
+  g.steps.length?h('div',{class:'goal-steps'},g.steps.map(x=>h('label',{class:'li'+(x.d?' done':'')},checkbox(x.d,'Concluir etapa '+x.t,e=>{x.d=e.target.checked;save('goals');rerender()}),h('span',{class:'t'},x.t)))):null)}
+function goalEditor(g){
+ const d=editing,close=()=>{editing=null;rerender('edit-'+g.id)};
+ const addStep=()=>{const v=d.step.trim();if(!v)return;d.steps.push({id:uid(),t:v,d:false});d.step='';rerender('goal-step')};
+ const commit=()=>{const title=d.title.trim();if(!title){rerender('goal-title');return}
+  if(d.step.trim())d.steps.push({id:uid(),t:d.step.trim(),d:false});
+  Object.assign(g,{title,desc:d.desc.trim(),due:d.due,steps:d.steps});save('goals');close()};
+ /* field() criaria um id aleatório; aqui o id fixo permite devolver o foco depois de redesenhar */
+ const labeled=(label,id,el)=>{el.id=id;return h('div',{class:'field'},h('label',{for:id},label),el)};
+ return h('form',{class:'todo-row goal-edit','aria-label':'Editar '+g.title,onsubmit:e=>{e.preventDefault();commit()},onkeydown:e=>{if(e.key==='Escape')close()}},
+  labeled('Título','goal-title',h('input',{class:'inp',value:d.title,maxLength:140,autocomplete:'off',oninput:e=>{d.title=e.target.value}})),
+  labeled('Descrição','goal-desc',h('textarea',{class:'inp',maxLength:1000,oninput:e=>{d.desc=e.target.value}},d.desc)),
+  h('div',{class:'field'},h('label',{for:'goal-step'},'Etapas'),
+   d.steps.map(x=>h('div',{class:'goal-step'},h('span',null,x.t),xbtn('Remover etapa '+x.t,()=>{d.steps=d.steps.filter(y=>y.id!==x.id);rerender('goal-step')}))),
+   h('div',{class:'add'},h('input',{class:'inp',id:'goal-step',placeholder:'Nova etapa',value:d.step,maxLength:140,autocomplete:'off',oninput:e=>{d.step=e.target.value},onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();addStep()}}}),
+    h('button',{type:'button',class:'btn btn-ghost',onclick:addStep},'Adicionar etapa'))),
+  h('div',{class:'goal-due-field'},labeled('Prazo','goal-due',h('input',{class:'inp',type:'month',value:d.due,oninput:e=>{d.due=e.target.value}}))),
+  h('div',{class:'row goal-actions'},
+   h('button',{type:'button',class:'btn btn-danger',onclick:()=>modal('Excluir item?',()=>h('p',{style:'margin:0'},'“'+g.title+'” e suas etapas serão removidos.'),{submit:'Excluir',onSubmit:()=>{S.goals.items=S.goals.items.filter(x=>x.id!==g.id);editing=null;save('goals');rerender()}})},'Excluir'),
+   h('button',{type:'button',class:'btn btn-ghost',style:'margin-left:auto',onclick:close},'Cancelar'),
+   h('button',{type:'submit',class:'btn btn-primary'},'Salvar')))}
 
 /* ---------- Planner semanal ---------- */
-let weekStart=sunday(new Date()),calOpen=false,calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);
+let weekStart=monday(new Date()),calOpen=false,calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);
 const dm=d=>pad(d.getDate())+'/'+pad(d.getMonth()+1);
 let calOff=null;
 function calStop(){if(calOff){const f=calOff;calOff=null;f()}}
@@ -662,7 +719,7 @@ function calWatch(){
  document.addEventListener('mousedown',away,true);document.addEventListener('keydown',esc);
  calOff=()=>{document.removeEventListener('mousedown',away,true);document.removeEventListener('keydown',esc)}}
 function calendarPanel(P){
- const first=calMonth,start=sunday(first),ws=iso(weekStart),we=iso(addDays(weekStart,6)),t=todayIso();
+ const first=calMonth,start=monday(first),ws=iso(weekStart),we=iso(addDays(weekStart,6)),t=todayIso();
  const withTasks=new Set(P.tasks.map(x=>x.date));
  const go=n=>{calMonth=new Date(first.getFullYear(),first.getMonth()+n,1);rerender()};
  return h('section',{class:'card cal cal-pop',role:'dialog','aria-label':'Calendário'},
@@ -671,22 +728,67 @@ function calendarPanel(P){
    h('strong',{class:'cal-title'},fmt({month:'long',year:'numeric'}).format(first)),
    h('button',{type:'button',class:'icon-btn','aria-label':'Próximo mês',onclick:()=>go(1),html:ICONS.chev})),
   h('div',{class:'cal-grid'},
-   ['D','S','T','Q','Q','S','S'].map((w,i)=>h('span',{class:'cal-h','aria-hidden':'true'},w)),
+   ['S','T','Q','Q','S','S','D'].map((w,i)=>h('span',{class:'cal-h','aria-hidden':'true'},w)),
    Array.from({length:42},(_,i)=>addDays(start,i)).map(d=>{const k=iso(d),inWeek=k>=ws&&k<=we;
-    return h('button',{type:'button',disabled:d.getDay()!==0,class:'cal-d'+(d.getMonth()!==first.getMonth()?' out':'')+(k===t?' today':'')+(inWeek?' sel':''),'aria-pressed':String(inWeek),
-     'aria-label':d.getDay()===0?'Semana de '+dm(d)+' a '+dm(addDays(d,6)):fmt({weekday:'long',day:'numeric',month:'long'}).format(d)+' (escolha o domingo da semana)',
-     onclick:()=>{weekStart=sunday(d);calMonth=new Date(d.getFullYear(),d.getMonth(),1);calOpen=false;calStop();rerender()}},d.getDate(),withTasks.has(k)?h('i',{class:'cal-dot'}):null)})),
-  ws!==iso(sunday(new Date()))?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{weekStart=sunday(new Date());calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);calOpen=false;calStop();rerender()}},'Ir para esta semana'):null)}
+    return h('button',{type:'button',disabled:d.getDay()!==1,class:'cal-d'+(d.getMonth()!==first.getMonth()?' out':'')+(k===t?' today':'')+(inWeek?' sel':''),'aria-pressed':String(inWeek),
+     'aria-label':d.getDay()===1?'Semana de '+dm(d)+' a '+dm(addDays(d,6)):fmt({weekday:'long',day:'numeric',month:'long'}).format(d)+' (escolha a segunda-feira da semana)',
+     onclick:()=>{weekStart=monday(d);calMonth=new Date(d.getFullYear(),d.getMonth(),1);calOpen=false;calStop();rerender()}},d.getDate(),withTasks.has(k)?h('i',{class:'cal-dot'}):null)})),
+  ws!==iso(monday(new Date()))?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{weekStart=monday(new Date());calMonth=new Date(weekStart.getFullYear(),weekStart.getMonth(),1);calOpen=false;calStop();rerender()}},'Ir para esta semana'):null)}
 function moveTaskModal(t){
  modal('Mudar data da tarefa',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
   h('p',{style:'margin:0;overflow-wrap:anywhere'},t.text),
   field('Nova data',h('input',{class:'inp',type:'date',name:'date',value:t.date}))),{
   onSubmit(fd,fail){const v=String(fd.get('date')||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){fail('Escolha uma data.');return false}
-   t.date=v;weekStart=sunday(parse(v));save('planner');rerender()},submit:'Mudar data'})}
-const WD=['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+   t.date=v;weekStart=monday(parse(v));save('planner');rerender()},submit:'Mudar data'})}
+const WD=['SEG','TER','QUA','QUI','SEX','SÁB','DOM'];
+/* ----- Google Agenda: eventos aparecem nos dias, só para leitura ----- */
+const gcal=new Map();   /* semana (segunda) -> {loading} | {connected,events,error} */
+const TZ=Intl.DateTimeFormat().resolvedOptions().timeZone||'America/Sao_Paulo';
+async function loadCalendar(ws,fresh){
+ gcal.set(ws,{loading:true});paintCalendar(ws);
+ try{const r=await api('/api/calendar?from='+ws+'&to='+iso(addDays(parse(ws),6))+'&tz='+encodeURIComponent(TZ)+(fresh?'&fresh=1':''));gcal.set(ws,{...r,at:Date.now()})}
+ catch(e){gcal.set(ws,{connected:true,events:[],error:e.status?e.message:'Não consegui carregar a Google Agenda.',at:Date.now()})}
+ paintCalendar(ws)}
+/* preenche só as áreas da agenda, sem redesenhar a página (não atrapalha quem está digitando) */
+function paintCalendar(ws){
+ const bar=document.getElementById('gcal-bar');if(!bar||bar.dataset.week!==ws)return;
+ const c=gcal.get(ws)||{loading:true};
+ const link=(txt,fn)=>h('a',{class:'edit-link',href:'#planner',onclick:e=>{e.preventDefault();fn()}},txt);
+ bar.replaceChildren(...(c.loading?[h('span',{class:'muted',role:'status'},'Carregando a Google Agenda…')]:
+  !c.connected?[link('Conectar Google Agenda',calendarModal)]:
+  [h('span',{class:c.error?'err':'muted',role:'status'},c.error||'Google Agenda conectada · '+(c.events.length===1?'1 evento':c.events.length+' eventos')+' nesta semana'),
+   link('Atualizar',()=>loadCalendar(ws,true)),link('Trocar endereço',calendarModal),link('Desconectar',disconnectCalendar)]));
+ for(const box of document.querySelectorAll('.day-events')){
+  const list=(c.events||[]).filter(e=>e.date===box.dataset.day);
+  box.replaceChildren(...list.map(e=>h('div',{class:'gc-event',title:[e.title,e.where].filter(Boolean).join(' · ')},
+   h('span',{class:'gc-time'},e.start?e.start+(e.end?' – '+e.end:''):e.end?'até '+e.end:'Dia inteiro'),h('span',null,e.title))));
+  const free=box.parentElement.querySelector('.empty');if(free)free.hidden=list.length>0}}
+function calendarModal(){
+ const input=h('input',{class:'inp',type:'url',name:'url',placeholder:'https://calendar.google.com/calendar/ical/…/basic.ics',autocomplete:'off'});
+ modal('Conectar Google Agenda',()=>h('div',{style:'display:flex;flex-direction:column;gap:16px'},
+  h('ol',{class:'tj-plain'},
+   h('li',null,'No computador, abra a ',h('a',{href:'https://calendar.google.com/calendar/r/settings',target:'_blank',rel:'noopener noreferrer'},'configuração da Google Agenda'),'.'),
+   h('li',null,'Na lateral, em "Configurações das minhas agendas", escolha a sua agenda.'),
+   h('li',null,'Em "Integrar agenda", copie o "Endereço secreto no formato iCal".'),
+   h('li',null,'Cole abaixo e clique em Conectar.')),
+  field('Endereço secreto no formato iCal',input),
+  h('p',{class:'ds-hint',style:'margin:0'},'Quem tiver esse endereço consegue ler a sua agenda: não o compartilhe. O planner só lê os eventos, não altera nada. Mudanças feitas no Google podem demorar um pouco para aparecer.')),{
+  submit:'Conectar',wide:true,
+  onSubmit(fd,fail){const url=String(fd.get('url')||'').trim();if(!url){fail('Cole o endereço da agenda.');return false}
+   const form=input.closest('form'),btn=form.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Conectando…';
+   api('/api/calendar',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})
+    .then(()=>{gcal.clear();form.querySelector('.actions .btn-ghost').click();rerender()})
+    .catch(e=>{fail(e.status?e.message:'Não consegui falar com o servidor.');btn.disabled=false;btn.textContent='Conectar'});
+   return false}})}
+function disconnectCalendar(){
+ modal('Desconectar a Google Agenda?',()=>h('p',{style:'margin:0'},'Os eventos deixam de aparecer no planner. Nada muda na sua agenda do Google.'),{submit:'Desconectar',
+  onSubmit(){api('/api/calendar',{method:'DELETE'}).then(()=>{gcal.clear();rerender()}).catch(()=>{})}})}
 function viewPlanner(){
+ const wsNow=iso(weekStart),cached=gcal.get(wsNow);
+ /* busca ao abrir a semana e de novo se os dados tiverem mais de 5 minutos */
+ setTimeout(()=>{if(!cached||(!cached.loading&&Date.now()-cached.at>300000))loadCalendar(wsNow);else paintCalendar(wsNow)},0);
  if(calOpen)setTimeout(calWatch,0);
- const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(sunday(new Date()));
+ const P=S.planner,ws=iso(weekStart),we=addDays(weekStart,6),isThis=ws===iso(monday(new Date()));
  const range=fmt({day:'numeric',month:'short'}).format(weekStart)+' – '+fmt({day:'numeric',month:'short',year:'numeric'}).format(we);
  const wkTasks=P.tasks.filter(t=>t.date>=ws&&t.date<=iso(we));
  return h('div',{class:'page'},
@@ -698,11 +800,13 @@ function viewPlanner(){
   h('div',{class:'row',style:'align-items:flex-start;gap:var(--space-5)'},
    h('div',{class:'postit'},h('label',{for:'focus'},'Foco da semana'),h('textarea',{id:'focus',rows:3,placeholder:'O que mais importa nesta semana?',maxLength:200,oninput:e=>{P.focus[ws]=e.target.value;save('planner')}},P.focus[ws]||'')),
    h('div',{style:'flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px;padding-top:8px'},h('span',{class:'muted',style:'font-weight:700'},'Tarefas feitas: '+wkTasks.filter(t=>t.done).length+' de '+wkTasks.length),prog(wkTasks.filter(t=>t.done).length,wkTasks.length))),
+  h('div',{class:'gcal-bar',id:'gcal-bar','data-week':ws}),
   h('div',{class:'week'},WD.map((w,i)=>{
    const d=addDays(weekStart,i),k=iso(d),ts=P.tasks.filter(t=>t.date===k),inpId='nt-'+k;
    const add=()=>{const el=document.getElementById(inpId),v=el.value.trim();if(!v)return;P.tasks.push({id:uid(),date:k,text:v,done:false});save('planner');rerender(inpId)};
    return h('section',{class:'day'+(k===todayIso()?' today':''),'aria-label':w+' '+d.getDate()},
     h('div',{class:'day-h'},h('span',{class:'day-n'},d.getDate()),h('span',{class:'day-w'},w)),
+    h('div',{class:'day-events','data-day':k}),
     ts.length?null:h('p',{class:'empty'},'Livre'),
     ts.map(t=>h('div',{class:'li'+(t.done?' done':'')},checkbox(t.done,'Concluir '+t.text,e=>{t.done=e.target.checked;save('planner');rerender()}),h('span',{class:'t'},t.text),
      h('span',{class:'acts'},
@@ -769,19 +873,19 @@ const PANELS={
      tjGrupoBox([['I','INSS']],'INSS','tópicos em comum já estudados',P.mats,'I')))]}}),
 
  inss:panel({id:'inss',edital:PD.inss.EDITAL,total:PD.inss.TOTAL_Q,curto:PD.inss.CURTO,fonte:PD.inss.FONTE,
-  unidade:['item','itens'],blocoLabel:b=>b.bloco,marcaVisiveis:true,
+  unidade:['item','itens'],blocoLabel:b=>b.bloco,
   topico(t){
    const inc={A:'Cai muito',M:'Cai médio',B:'Cai pouco'}[t[2]],o=(t[3]||'').split('').filter(Boolean);
    return{nome:t[0],ref:t[1]||'',selos:[selo(t[2]==='A'?'M':'N',inc,'Incidência em provas anteriores do Cebraspe'),...o.map(x=>selo(x,NOME_SELO[x],'Também cai no edital '+NOME_SELO[x]))],notas:[],inc:t[2],outros:o}},
   filtros:[['tjsp','TJSP',t=>t.outros.includes('T')],['receita','Receita',t=>t.outros.includes('R')],['tres','Nos três',t=>t.outros.includes('T')&&t.outros.includes('R')],['alta','Cai muito',t=>t.inc==='A']],
   notaAcerto:g=>{const certos=Math.round(g.accPond*P.total);return'nota líquida estimada ≈ '+(2*certos-P.total)+' de '+P.total+' (mínimo 36) · base: matérias que valem '+g.pesoPrat+' itens'},
-  comum(){return[tjPanel('Vale também para TJSP e Receita','tópicos do INSS que aparecem nos outros editais · clique numa matéria para ver só esses tópicos',h('div',{class:'tj-grid3'},
+  comum(){return[tjPanel('Vale também para TJSP e Receita','tópicos do INSS que aparecem nos outros editais · clique numa matéria para ver só esses tópicos',h('div',{class:'tj-grid3 tj-comum'},
    tjGrupoBox([['T','TJSP'],['R','Receita']],'Nos três concursos','INSS, TJSP e Receita',P.mats,'tres'),
    tjGrupoBox([['T','TJSP']],'Também no TJSP','Escrevente Técnico Judiciário',P.mats,'tjsp'),
    tjGrupoBox([['R','Receita']],'Também na Receita','Analista-Tributário e Auditor-Fiscal',P.mats,'receita')))]}}),
 
  receita:panel({id:'rfb',edital:PD.rfb.EDITAL,total:PD.rfb.TOTAL_Q,curto:PD.rfb.CURTO,fonte:PD.rfb.FONTE,
-  blocoLabel:b=>'Módulo '+b.bloco,marcaVisiveis:true,estimada:PD.rfb.PROVA_ESTIMADA,
+  blocoLabel:b=>'Módulo '+b.bloco,estimada:PD.rfb.PROVA_ESTIMADA,
   extraTabs:[{id:'simulado',name:'Simulado',view:()=>rfbSimulado()},{id:'edital',name:'Edital',view:()=>rfbEdital()}],
   topico(t){const o=(t[2]||'').split('').filter(Boolean);
    return{nome:t[0],ref:t[1]||'',selos:o.map(x=>selo(x,NOME_SELO[x],'Também cai no edital '+NOME_SELO[x])),notas:[],outros:o}},
@@ -871,20 +975,20 @@ function tjChartMat(){
   s+='</g>'});
  s+='<line x1="'+x(meta)+'" x2="'+x(meta)+'" y1="'+(top-8)+'" y2="'+(H-20)+'" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="'+x(meta)+'" y="'+(top-11)+'" font-size="11" font-weight="600" fill="var(--text)" text-anchor="middle">meta '+T.meta+'%</text></svg>';
  return h('div',{class:'tj-chart',html:s,onclick:e=>{const g=e.target.closest('[data-goto]');if(g)tjGo(g.dataset.goto)}})}
-function tjChartEvo(regs){
+function tjChartEvo(regs,largura=460){
  const porDia={};
  for(const r of regs){(porDia[r.d]=porDia[r.d]||{f:0,a:0});porDia[r.d].f+=r.f;porDia[r.d].a+=r.a}
  const dias=Object.keys(porDia).sort();
  if(!dias.length)return h('p',{class:'empty'},'A linha aparece depois do primeiro registro de questões.');
  let cf=0,ca=0;
  const pts=dias.map(d=>{cf+=porDia[d].f;ca+=porDia[d].a;return{d,f:porDia[d].f,a:porDia[d].a,cum:ca/cf,cf}});
- const W=460,H=240,L=40,R=16,T=18,B=30,pw=W-L-R,ph=H-T-B,x=i=>L+(pts.length===1?pw/2:i*pw/(pts.length-1)),y=v=>T+(1-v)*ph,meta=tjT().meta/100;
+ const W=largura,H=240,L=40,R=16,T=18,B=30,pw=W-L-R,ph=H-T-B,x=i=>L+(pts.length===1?pw/2:i*pw/(pts.length-1)),y=v=>T+(1-v)*ph,meta=tjT().meta/100;
  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Evolução do acerto acumulado">';
  for(const t of[0,.25,.5,.75,1])s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t)+'" y2="'+y(t)+'" stroke="var(--line)"/><text x="'+(L-6)+'" y="'+(y(t)+4)+'" font-size="11" fill="var(--muted)" text-anchor="end">'+t*100+'%</text>';
  s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(meta)+'" y2="'+y(meta)+'" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="4 3"/>';
  const line=pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(p.cum).toFixed(1)).join(' ');
  if(pts.length>1)s+='<path d="'+line+' L'+x(pts.length-1)+' '+y(0)+' L'+x(0)+' '+y(0)+' Z" fill="var(--tj-good)" opacity=".09"/><path d="'+line+'" fill="none" stroke="var(--tj-good)" stroke-width="2.2" stroke-linejoin="round"/>';
- const step=Math.ceil(pts.length/6);
+ const step=Math.ceil(pts.length/Math.round(W/76));
  pts.forEach((p,i)=>{const last=i===pts.length-1;
   if(i%step===0||last)s+='<text x="'+x(i)+'" y="'+(H-10)+'" font-size="11" fill="var(--muted)" text-anchor="middle">'+tjDate(p.d).slice(0,5)+'</text>';
   s+='<circle cx="'+x(i)+'" cy="'+y(p.cum)+'" r="'+(last?5:3.5)+'" fill="var(--tj-good)" stroke="var(--surface)" stroke-width="2"><title>'+tjEsc(tjDate(p.d)+' · no dia: '+p.a+'/'+p.f+' ('+tjPct(p.a/p.f)+') · acumulado: '+tjPct(p.cum)+' em '+p.cf+' questões')+'</title></circle>'});
@@ -940,8 +1044,6 @@ function tjMateria(m){
  const hasF=f=>m.topicos.some(f[2]);
  const disponiveis=P.filtros.filter(hasF);
  const ativo=tjFiltro(tjFilter),visible=t=>!ativo||ativo[2](t);
- const marcaveis=m.topicos.map((t,i)=>i).filter(i=>!P.marcaVisiveis||visible(m.topicos[i]));
- const allDone=marcaveis.length>0&&marcaveis.every(i=>T.topicos[key(i)]);
  const filtroBtn=(f,txt)=>h('button',{type:'button',class:'chip tj-chip','aria-pressed':String(tjFilter===f),onclick:()=>{tjFilter=f;rerender()}},txt);
 
  const itens=m.topicos.map((t,i)=>{
@@ -968,7 +1070,7 @@ function tjMateria(m){
    if(!(a>=0))return fail('Informe quantas você acertou (pode ser 0).');
    if(a>f)return fail('Os acertos não podem passar do número de questões feitas.');
    T.registros.push({id:uid(),m:m.id,d:dt,f,a,...(tv!==''?{t:+tv}:{}),...(n?{n:n.slice(0,200)}:{})});save(P.id);rerender()}},
-  h('div',{style:'grid-column:1/-1'},field('Tópico',dropdown({name:'t',value:'',label:'Tópico',options:topicOpts}))),
+  h('div',{class:'tj-f-topico'},field('Tópico',dropdown({name:'t',value:'',label:'Tópico',options:topicOpts}))),
   field('Data',h('input',{class:'inp',type:'date',name:'d',value:todayIso()})),
   field('Questões feitas',h('input',{class:'inp',type:'number',name:'f',min:'1',step:'1',inputmode:'numeric',placeholder:'20'})),
   field('Acertos',h('input',{class:'inp',type:'number',name:'a',min:'0',step:'1',inputmode:'numeric',placeholder:'15'})),
@@ -987,15 +1089,15 @@ function tjMateria(m){
    h('div',null,h('span',{class:'eyebrow'},P.blocoLabel({bloco:m.bloco})+' · '+m.blocoNome+(m.nota?' · '+m.nota:'')),h('h2',null,m.nome)),
    h('div',{class:'row'},h('span',{class:'badge'},tjQ(m.peso,...P.unidade)+' na prova'),h('span',{class:'badge'},s.feitos+'/'+s.total+' tópicos'),
     s.f?h('span',{class:'badge'},s.a+'/'+s.f+' questões'):null,tjPill(cls,s.f?tjPct(s.acc)+' · '+lab:'sem questões'))),
-  h('div',{class:'tj-grid3'},
+  h('div',{class:'tj-grid3 tj-comum'},
    tjPanel('Acertos e erros',null,h('div',{class:'tj-donut'},h('div',{html:tjDonut(s.f?[{frac:s.a/s.f,cor:'var(--tj-good)'},{frac:e/s.f,cor:'var(--tj-bad)'}]:[],s.f?tjPct(s.acc):'–',s.f?'de acerto':'sem questões')}),
     s.f?tjLegend([['var(--tj-good)','Acertos',s.a],['var(--tj-bad)','Erros',e],['var(--muted)','Total',s.f]]):h('p',{class:'muted',style:'margin:0;font-size:14px'},'Registre a primeira bateria para ver acertos e erros.'))),
    tjPanel('Edital da matéria',null,h('div',{class:'tj-donut'},h('div',{html:tjDonut([{frac:rev/s.total,cor:'var(--text)'},{frac:(s.feitos-rev)/s.total,cor:'var(--tj-good)'}],Math.round(s.prog*100)+'%','estudado')}),
     tjLegend([['var(--text)','Revisados',rev],['var(--tj-good)','Estudados',s.feitos-rev],['var(--line-strong)','A estudar',s.total-s.feitos]]))),
-   tjPanel('Evolução do acerto','acumulado, por dia',tjChartEvo(regs))),
+   tjPanel('Evolução do acerto','acumulado, por dia',tjChartEvo(regs,innerWidth>700?900:460))),
   h('div',{class:'tj-cols'},
    h('div',{class:'tj-stack'},
-    h('div',{class:'tj-ph'},h('h3',null,'Tópicos do edital'),h('button',{type:'button',class:'btn btn-ghost btn-sm',disabled:!marcaveis.length,onclick:()=>{marcaveis.forEach(i=>{const k=key(i);if(allDone){delete T.topicos[k];delete T.revisados[k]}else if(!T.topicos[k])T.topicos[k]=todayIso()});save(P.id);rerender()}},allDone?'Desmarcar todos':'Marcar todos')),
+    h('div',{class:'tj-ph'},h('h3',null,'Tópicos do edital')),
     h('div',{class:'row',role:'group','aria-label':'Filtrar tópicos'},h('span',{class:'muted',style:'font-size:13px;font-weight:700'},'Mostrar:'),filtroBtn('','Todos'),P.filtros.filter(f=>hasF(f)||f[0]===tjFilter).map(f=>filtroBtn(f[0],f[1]))),
     P.semComum&&!disponiveis.some(f=>f[0]!=='M')?h('p',{class:'muted',style:'margin:0;font-size:13px'},P.semComum):null,
     topics),
@@ -1052,14 +1154,16 @@ function viewPanel(X){
  if(tjTab!=='painel'&&!P.mat[tjTab]&&!extra)tjTab='painel';
  const items=[{id:'painel',name:'Painel'},...P.mats.map(m=>({id:m.id,name:tjShort(m)})),...P.extraTabs.map(({id,name})=>({id,name}))];
  return h('div',{class:'page'},
-  head('Concurso',[h('em',null,X.name||'Sem nome')],[h('button',{class:'btn btn-ghost',onclick:()=>{examSel=null;rerender();goTop()}},'‹ Concursos')]),
+  h('div',null,
+   h('a',{class:'back-link',href:'#concurso',onclick:ev=>{ev.preventDefault();examSel=null;rerender();goTop()}},h('span',{html:ICONS.back,style:'display:contents','aria-hidden':'true'}),'Concursos'),
+   head('Concurso',[h('em',null,X.name||'Sem nome')],[
+    h('div',{class:'card tj-config'},h('div',{class:'tj-config-row'},
+     field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
+     field('Meta de acerto (%)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(T.meta),onchange:e=>{T.meta=Math.min(100,Math.max(0,parseInt(e.target.value,10)||0));save(P.id);rerender()}})),
+     P.estimada&&!X.date?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{X.date=P.estimada;save('study');rerender()}},'Usar data estimada ('+tjDate(P.estimada)+')'):null))])),
   h('div',{class:'row'},
    h('span',{class:'badge'},left==null?'Sem data da prova':left<0?'Prova já realizada':left===0?'A prova é hoje':left+(left===1?' dia':' dias')+' para a prova'),
    h('span',{class:'badge'},g.top+' de '+P.topicos+' tópicos estudados')),
-  h('div',{class:'card tj-config'},h('div',{class:'tj-config-row'},
-   field('Data da prova',h('input',{class:'inp',type:'date',value:X.date,onchange:e=>{X.date=e.target.value;save('study');rerender()}})),
-   field('Meta de acerto (%)',h('input',{class:'inp',type:'number',min:'0',max:'100',step:'1',value:String(T.meta),onchange:e=>{T.meta=Math.min(100,Math.max(0,parseInt(e.target.value,10)||0));save(P.id);rerender()}})),
-   P.estimada&&!X.date?h('button',{type:'button',class:'btn btn-ghost btn-sm',onclick:()=>{X.date=P.estimada;save('study');rerender()}},'Usar data estimada ('+tjDate(P.estimada)+')'):null)),
   tabs(items,tjTab,'Painel e matérias do concurso',(id,fid)=>{tjTab=id;tjFilter='';rerender(fid);goTop()}),
   tjTab==='painel'?tjPainel():P.mat[tjTab]?tjMateria(P.mat[tjTab]):P.extraTabs.find(t=>t.id===tjTab).view(),
   P.fonte.map(f=>h('p',{class:'muted tj-note'},f)))}

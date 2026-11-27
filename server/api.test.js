@@ -124,8 +124,8 @@ test('grava e relê todas as seções; cada usuário só vê os próprios dados'
       deposits: [{ id: 'd1', cat: 'c1', date: '2026-11-22', amount: 250.5, note: '13º' }],
     },
     goals: {
-      areas: [{ id: 'a1', name: 'Estudos', tone: 'pink' }],
-      items: [{ id: 'g1', area: 'a1', title: 'Curso', due: '2027-03', done: false, steps: [{ id: 's1', t: 'um', d: true }, { id: 's2', t: 'dois', d: false }] }],
+      areas: [{ id: 'a1', name: 'Estudos', tone: 'pink', img: 'data:image/jpeg;base64,AAAA' }],
+      items: [{ id: 'g1', area: 'a1', title: 'Curso', desc: 'Detalhes\ndo curso', due: '2027-03', done: false, steps: [{ id: 's1', t: 'um', d: true }, { id: 's2', t: 'dois', d: false }] }],
     },
     planner: { tasks: [{ id: 't1', date: '2026-11-22', text: 'x', done: false }], focus: { '2026-11-16': 'foco' } },
     study: {

@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS goal_areas (
   id       TEXT NOT NULL,
   name     TEXT NOT NULL,
   tone     TEXT NOT NULL DEFAULT 'mint' CHECK (tone IN ('mint','peach','pink','yellow','neutral')),
+  img      TEXT NOT NULL DEFAULT '',             -- capa (data URL)
   position INTEGER NOT NULL,
   PRIMARY KEY (user_id, id)
 );
@@ -94,6 +95,7 @@ CREATE TABLE IF NOT EXISTS goals (
   id       TEXT NOT NULL,
   area_id  TEXT NOT NULL,
   title    TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   due      TEXT NOT NULL DEFAULT '',
   done     INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0,1)),
   position INTEGER NOT NULL,
@@ -243,4 +245,10 @@ CREATE TABLE IF NOT EXISTS panel_settings (
   sim      TEXT NOT NULL DEFAULT '{}',         -- simulado: acertos por matéria (JSON)
   sim_disc REAL,                               -- simulado: nota da discursiva
   PRIMARY KEY (user_id, panel)
+);
+
+-- ---------- Google Agenda (endereço secreto iCal, somente leitura) ----------
+CREATE TABLE IF NOT EXISTS calendar_links (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  url     TEXT NOT NULL
 );

@@ -69,6 +69,12 @@ export async function openRedis({ url, token, sections, openScratch }) {
       });
     },
 
+    /* ----- Google Agenda ----- */
+    getCalendar: (u) => cmd('GET', key('calendar', u)),
+    async setCalendar(u, url) {
+      await (url ? cmd('SET', key('calendar', u), url) : cmd('DEL', key('calendar', u)));
+    },
+
     /* ----- contas e sessões ----- */
     hasUsers: async () => (await cmd('GET', key('user_seq'))) != null,
     async createUser(email, name, passwordHash) {

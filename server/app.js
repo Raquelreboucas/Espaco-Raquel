@@ -3,6 +3,7 @@ import { extname, normalize, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SECTIONS, ValidationError } from './db.js';
 import { pageImage, PreviewError } from './preview.js';
+import { checkCalendarUrl, fetchIcs, eventsBetween, CalendarError } from './calendar.js';
 import { hashPassword, verifyPassword, DUMMY_HASH, newToken, hashToken, EMAIL_RE } from './auth.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -23,7 +24,7 @@ class HttpError extends Error {
 }
 
 /** getStore: função assíncrona que devolve o banco (aberto uma vez por processo). */
-export function createHandler(getStore) {
+export function createHandler(getStore, { loadIcs = fetchIcs } = {}) {
   const send = (res, status, body, headers = {}) => {
     const isObj = body !== null && typeof body === 'object' && !Buffer.isBuffer(body);
     res.writeHead(status, {
@@ -141,6 +142,10 @@ export function createHandler(getStore) {
       try { return send(res, 200, { image: await pageImage(String(b?.url ?? '')) }); }
       catch (e) { if (e instanceof PreviewError) throw new HttpError(422, e.message); throw e; }
     }
+    if (path === '/api/calendar') {
+      try { return await calendar(store, req, res, user); }
+      catch (e) { if (e instanceof CalendarError) throw new HttpError(422, e.message); throw e; }
+    }
     const m = path.match(/^\/api\/state\/([a-z]+)$/);
     if (m && method === 'PUT') {
       if (!SECTIONS.includes(m[1])) throw new HttpError(404, 'Seção desconhecida.');
@@ -148,6 +153,30 @@ export function createHandler(getStore) {
       return send(res, 204, '');
     }
     throw new HttpError(404, 'Rota não encontrada.');
+  }
+
+  /* Google Agenda: o endereço secreto é gravado no servidor e nunca volta para o navegador */
+  async function calendar(store, req, res, user) {
+    if (req.method === 'PUT') {
+      const url = checkCalendarUrl((await readBody(req))?.url);
+      await loadIcs(url, { fresh: true });            // só grava se o endereço funcionar
+      await store.setCalendar(user.id, url);
+      return send(res, 204, '');
+    }
+    if (req.method === 'DELETE') {
+      await store.setCalendar(user.id, null);
+      return send(res, 204, '');
+    }
+    if (req.method !== 'GET') throw new HttpError(405, 'Método não permitido.');
+    const q = new URL(req.url, 'http://localhost').searchParams;
+    const from = q.get('from') ?? '', to = q.get('to') ?? '', tz = q.get('tz') || 'America/Sao_Paulo';
+    const days = (Date.parse(to) - Date.parse(from)) / 86400000;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || !(days >= 0 && days <= 45)) throw new HttpError(400, 'Período inválido.');
+    try { new Intl.DateTimeFormat('en', { timeZone: tz }); } catch { throw new HttpError(400, 'Fuso horário inválido.'); }
+    const url = await store.getCalendar(user.id);
+    if (!url) return send(res, 200, { connected: false, events: [] });
+    const text = await loadIcs(url, { fresh: q.get('fresh') === '1' });
+    return send(res, 200, { connected: true, events: eventsBetween(text, from, to, tz) });
   }
 
   async function serveStatic(req, res, path) {

@@ -50,6 +50,8 @@ export async function openDb({ url, authToken } = {}) {
   await migrateOldStudy(client);
   await addColumn(client, 'wishlist_categories', 'box', 'INTEGER NOT NULL DEFAULT 0');
   await addColumn(client, 'wishlist_items', 'use_box', 'INTEGER NOT NULL DEFAULT 1');
+  await addColumn(client, 'goal_areas', 'img', "TEXT NOT NULL DEFAULT ''");
+  await addColumn(client, 'goals', 'description', "TEXT NOT NULL DEFAULT ''");
   await client.executeMultiple(readFileSync(join(here, 'schema.sql'), 'utf8'));
   return makeStore(client);
 }
@@ -109,14 +111,14 @@ function makeStore(client) {
     },
     async goals(u) {
       const [areas, goals, steps] = await Promise.all([
-        rows('SELECT id, name, tone FROM goal_areas WHERE user_id = ? ORDER BY position', [u]),
+        rows('SELECT id, name, tone, img FROM goal_areas WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM goals WHERE user_id = ? ORDER BY position', [u]),
         rows('SELECT * FROM goal_steps WHERE user_id = ? ORDER BY position', [u]),
       ]);
       return {
-        areas: areas.map((a) => ({ id: a.id, name: a.name, tone: a.tone })),
+        areas: areas.map((a) => ({ id: a.id, name: a.name, tone: a.tone, img: a.img })),
         items: goals.map((g) => ({
-          id: g.id, area: g.area_id, title: g.title, due: g.due, done: !!g.done,
+          id: g.id, area: g.area_id, title: g.title, desc: g.description, due: g.due, done: !!g.done,
           steps: steps.filter((s) => s.goal_id === g.id).map((s) => ({ id: s.id, t: s.text, d: !!s.done })),
         })),
       };
@@ -267,14 +269,14 @@ function makeStore(client) {
       areas.forEach((a, i) => {
         const aid = id(a.id, 'areas');
         areaIds.add(aid);
-        out.push(st('INSERT INTO goal_areas(user_id, id, name, tone, position) VALUES (?,?,?,?,?)',
-          [u, aid, str(a.name, 60) || 'Sem nome', oneOf(a.tone, TONES, 'mint'), i]));
+        out.push(st('INSERT INTO goal_areas(user_id, id, name, tone, img, position) VALUES (?,?,?,?,?,?)',
+          [u, aid, str(a.name, 60) || 'Sem nome', oneOf(a.tone, TONES, 'mint'), img(a.img), i]));
       });
       items.forEach((g, i) => {
         if (!areaIds.has(g.area)) throw new ValidationError(`O objetivo "${str(g.title, 40)}" aponta para uma área inexistente.`);
         const gid = id(g.id, 'items');
-        out.push(st('INSERT INTO goals(user_id, id, area_id, title, due, done, position) VALUES (?,?,?,?,?,?,?)',
-          [u, gid, g.area, str(g.title, 140) || 'Sem título', /^\d{4}-\d{2}$/.test(g.due) ? g.due : '', bool(g.done), i]));
+        out.push(st('INSERT INTO goals(user_id, id, area_id, title, description, due, done, position) VALUES (?,?,?,?,?,?,?,?)',
+          [u, gid, g.area, str(g.title, 140) || 'Sem título', str(g.desc, 1000), /^\d{4}-\d{2}$/.test(g.due) ? g.due : '', bool(g.done), i]));
         arr(g.steps ?? [], 'steps').forEach((s, j) =>
           out.push(st('INSERT INTO goal_steps(user_id, id, goal_id, text, done, position) VALUES (?,?,?,?,?,?)',
             [u, id(s.id, 'steps'), gid, str(s.t, 140), bool(s.d), j])));
@@ -373,6 +375,14 @@ function makeStore(client) {
     async exportAll(u) {
       const entries = await Promise.all(SECTIONS.map(async (s) => [s, await readers[s](u)]));
       return { app: 'meu-espaco-pessoal', exportedAt: new Date().toISOString(), data: Object.fromEntries(entries) };
+    },
+
+    /* ----- Google Agenda (fora do estado e do backup: o endereço é secreto) ----- */
+    getCalendar: async (u) => (await one('SELECT url FROM calendar_links WHERE user_id = ?', [u]))?.url ?? null,
+    async setCalendar(u, url) {
+      await client.execute(url
+        ? { sql: 'INSERT INTO calendar_links(user_id, url) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET url = excluded.url', args: [u, url] }
+        : { sql: 'DELETE FROM calendar_links WHERE user_id = ?', args: [u] });
     },
 
     /* ----- contas e sessões ----- */
